@@ -1,0 +1,2 @@
+class SidewinderEffectGuard:
+    pass

@@ -1,0 +1,2 @@
+class SidewinderCallStack:
+    pass
