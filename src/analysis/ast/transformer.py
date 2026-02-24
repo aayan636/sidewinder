@@ -9,8 +9,10 @@ This module transforms Python code for symbolic execution by:
 """
 
 import ast
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional, Set, Union, overload
 from collections import defaultdict
+
+from analysis.ast.transformer_context import TransformerContext
 
 
 class SidewinderTransformer(ast.NodeTransformer):
@@ -24,7 +26,9 @@ class SidewinderTransformer(ast.NodeTransformer):
     - Convert comprehensions to explicit loops
     - Desugar with statements to __enter__/__exit__
     """
-    
+    def generic_visit(self, node: ast.AST) -> None:
+        raise NotImplementedError("All visitor methods must be implemented and not delegated to generic_visit of ast.NodeTransformer")
+
     def __init__(self):
         # Track which functions have **kwargs in their signature
         self.function_signatures: Dict[str, bool] = {}  # name -> has_kwargs
@@ -34,6 +38,9 @@ class SidewinderTransformer(ast.NodeTransformer):
         
         # Track current scope for variable naming
         self.current_scope = []
+
+        # Current node where we append extra computation required
+        self.current_context = TransformerContext()
         
     def _fresh_temp(self, prefix: str = "__t") -> str:
         """Generate a fresh temporary variable name."""
@@ -45,22 +52,37 @@ class SidewinderTransformer(ast.NodeTransformer):
         """Create the __sidewinder_state parameter with type annotation."""
         return ast.arg(
             arg="__sidewinder_state",
-            annotation=ast.Attribute(
-                value=ast.Attribute(
-                    value=ast.Attribute(
-                        value=ast.Name(id="sidewinder", ctx=ast.Load()),
-                        attr="analysis",
-                        ctx=ast.Load()
-                    ),
-                    attr="symbolic",
-                    ctx=ast.Load()
-                ),
-                attr="SidewinderState",
-                ctx=ast.Load()
-            )
+            annotation=ast.Name(id="SidewinderState", ctx=ast.Load())
         )
     
-    # ========== Module and Statement Nodes ==========
+    def _visit_list_of_stmts(self, stmts: List[ast.stmt]) -> List[ast.stmt]:
+        """
+        Visit a list of statements, handling list expansion and preamble injection.
+        Must be called within a context manager.
+        """
+        result: list[ast.stmt] = []
+        for stmt in stmts:
+            visited = self.visit(stmt)
+            if isinstance(visited, list):
+                result.extend(visited)
+            else:
+                result.append(visited)
+        return result
+    
+    def _visit_expr(self, expr: ast.expr) -> 
+
+    # ========== Overloads for type hinting =============
+
+    @overload
+    def visit(self, node: ast.stmt) -> Union[ast.stmt, List[ast.stmt]]: ...
+
+    @overload
+    def visit(self, node: ast.expr) -> tuple[List[ast.stmt], ast.expr]: ...
+
+    def visit(self, node: ast.AST) -> Any:
+        return super().visit(node)
+
+    # ========== Module Nodes ==========
     
     def visit_Module(self, node: ast.Module) -> Any:
         """Visit a module node - add import for SidewinderState."""
@@ -72,24 +94,31 @@ class SidewinderTransformer(ast.NodeTransformer):
         )
         
         # Transform all statements in the module
-        new_body = [import_node]
-        for stmt in node.body:
-            transformed = self.visit(stmt)
-            if isinstance(transformed, list):
-                new_body.extend(transformed)
-            else:
-                new_body.append(transformed)
-        
-        node.body = new_body
+        with self.current_context.enter_context(node, "body") as c:
+            node.body = [import_node] + self._visit_list_of_stmts(node.body)
         return node
     
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
+    # ========== Function (sync and async) Def Nodes ==========
+
+    def _transform_function_def(self, node: Union[ast.FunctionDef, ast.AsyncFunctionDef]) -> Any:
         """
         Transform function definition to include __sidewinder_state parameter.
+        Works for both regular and async functions.
         
-        Placement:
-        - If no **kwargs: add as last parameter
-        - If **kwargs exists: add before **kwargs
+        Strategy: ALWAYS add __sidewinder_state as a keyword-only argument.
+        
+        Why keyword-only?
+        1. Consistent call sites: always use __sidewinder_state=state (no signature tracking needed)
+        2. Automatic correct placement: kwonlyargs come after *args and before **kwargs
+        3. No positional ambiguity: can't accidentally pass wrong number of args
+        
+        Results in:
+        - def foo(x, y):              → def foo(x, y, *, __sidewinder_state):
+        - def foo(x, *args):          → def foo(x, *args, __sidewinder_state):  
+        - def foo(x, **kw):           → def foo(x, *, __sidewinder_state, **kw):
+        - def foo(x, *args, **kw):    → def foo(x, *args, __sidewinder_state, **kw):
+        
+        All call sites become: func(..., __sidewinder_state=__sidewinder_state)
         """
         # Check if function has **kwargs
         has_kwargs = node.args.kwarg is not None
@@ -97,52 +126,34 @@ class SidewinderTransformer(ast.NodeTransformer):
         
         # Create the state parameter
         state_param = self._make_sidewinder_state_param()
-        
-        # Insert state parameter in the right position
-        if has_kwargs:
-            # Add to kwonlyargs (before **kwargs)
-            node.args.kwonlyargs.append(state_param)
-            # Add None default for the new kwonly arg if needed
-            if node.args.kw_defaults is None:
-                node.args.kw_defaults = []
-            node.args.kw_defaults.append(None)
-        else:
-            # Add as last positional parameter
-            node.args.args.append(state_param)
+    
+        # Add to kwonlyargs (before **kwargs)
+        node.args.kwonlyargs.append(state_param)
+        # Add None default for the new kwonly arg
+        if node.args.kw_defaults is None:
+            node.args.kw_defaults = []
+        node.args.kw_defaults.append(None)
         
         # Transform function body
-        self.current_scope.append(node.name)
-        node.body = [self.visit(stmt) for stmt in node.body]
-        self.current_scope.pop()
+        with self.current_context.enter_context(node, "body") as c:
+            node.body = self._visit_list_of_stmts(node.body)
         
         # Transform decorators
+        with self.current_context.enter_context(node, "decorator_list") as c:
+            node.decorator_list 
         node.decorator_list = [self.visit(dec) for dec in node.decorator_list]
         
         return node
     
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
+        """Visit a function definition."""
+        return self._transform_function_def(node)
+
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> Any:
-        """Transform async function definition - same as regular function."""
-        # Same logic as FunctionDef
-        has_kwargs = node.args.kwarg is not None
-        self.function_signatures[node.name] = has_kwargs
-        
-        state_param = self._make_sidewinder_state_param()
-        
-        if has_kwargs:
-            node.args.kwonlyargs.append(state_param)
-            if node.args.kw_defaults is None:
-                node.args.kw_defaults = []
-            node.args.kw_defaults.append(None)
-        else:
-            node.args.args.append(state_param)
-        
-        self.current_scope.append(node.name)
-        node.body = [self.visit(stmt) for stmt in node.body]
-        self.current_scope.pop()
-        
-        node.decorator_list = [self.visit(dec) for dec in node.decorator_list]
-        
-        return node
+        """Visit an async function definition."""
+        return self._transform_function_def(node)
+    
+    # ========== Class Def Nodes ==========
     
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
         """Visit a class definition - transform all methods."""
@@ -162,6 +173,10 @@ class SidewinderTransformer(ast.NodeTransformer):
     def visit_Return(self, node: ast.Return) -> Any:
         """Transform return statement - transform the return value."""
         if node.value:
+            transformed = self.visit(node.value)
+            if isinstance(transformed, list):
+                assert len(transformed) > 0, f"Expect non zero number of statements parsing {ast.unparse(node.value)}"
+                node.value = transformed[-1]
             node.value = self.visit(node.value)
         return node
     
@@ -1140,22 +1155,31 @@ def transform_code(source_code: str) -> str:
 
 if __name__ == "__main__":
     # Test the transformer
+#     test_code = """
+# def add(x, y):
+#     return x + y
+
+# def greet(name, **kwargs):
+#     print(f"Hello {name}")
+
+# result = add(1, 2)
+
+# for i in range(10):
+#     print(i)
+
     test_code = """
-def add(x, y):
-    return x + y
-
-def greet(name, **kwargs):
-    print(f"Hello {name}")
-
-result = add(1, 2)
-
-for i in range(10):
-    print(i)
-
-a = [x * 2 for x in range(5)]
+def foo(x, *k, **y):
+    pass
 """
+
+# a = [x * 2 for x in range(5)]
+# """
     
     print("=== Original Code ===")
     print(test_code)
     print("\n=== Transformed Code ===")
-    print(transform_code(test_code))
+    transformed_code = transform_code(test_code)
+    print(transformed_code)
+    exec(transformed_code)
+
+       
