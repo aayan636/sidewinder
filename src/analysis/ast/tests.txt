@@ -1,0 +1,53 @@
+# ast.Name
+x = 1
+
+# ast.Attribute
+foo.bar = 1
+
+# ast.Attribute chained
+foo.bar.baz = 1
+
+# ast.Subscript - plain index
+foo[0] = 1
+
+# ast.Subscript - variable index
+foo[i] = 1
+
+# ast.Subscript - slice
+foo[1:3] = 1
+
+# ast.Subscript - chained
+foo[0][1] = 1
+
+# ast.Subscript on attribute
+foo.bar[0] = 1
+
+# ast.Attribute on subscript
+foo[0].bar = 1
+
+# ast.Tuple - simple
+x, y, z = [1, 2, 3]
+
+# ast.Tuple - nested
+x, (y, z) = [1, [2, 3]]
+
+# ast.Tuple - with attribute target
+x, y.attr = [1, 2]
+
+# ast.Tuple - with subscript target
+x, y[0] = [1, 2]
+
+# ast.Tuple - nested deep
+x, (y, (z, w)) = [1, [2, [3, 4]]]
+
+# ast.List form (identical semantics to tuple)
+[x, y] = [1, 2]
+
+# ast.Starred - not implemented, should raise
+x, *y, z = [1, 2, 3, 4]
+
+# ast.Starred at start - not implemented, should raise  
+*x, y = [1, 2, 3]
+
+# chained assignment - should assert
+x = y = 1

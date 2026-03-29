@@ -9,8 +9,9 @@ This module transforms Python code for symbolic execution by:
 """
 
 import ast
-from typing import Dict, List, Any, Optional, Set, Union, overload
+from typing import Dict, List, Any, Optional, Set, Union, overload, TypeVar
 from collections import defaultdict
+import copy
 
 from analysis.ast.transformer_context import TransformerContext
 
@@ -69,7 +70,105 @@ class SidewinderTransformer(ast.NodeTransformer):
                 result.append(visited)
         return result
     
-    def _visit_expr(self, expr: ast.expr) -> 
+    T = TypeVar('T', bound=ast.expr)
+
+    def _visit_expr(self, expr: T) -> T:
+        generated_stmts, final_expr = self.visit(expr)
+        for stmt in generated_stmts:
+            self.current_context.append_stmt(stmt)
+        return final_expr
+    
+    def _visit_target(self, target: ast.expr | ast.Tuple | ast.List, visited_rhs: ast.expr) -> None:
+        """
+        Emit statements to assign rhs to target.
+        rhs is already a normalized expression (usually a Name node pointing to a tmp).
+        Appends statements to current_context, returns nothing.
+        """
+        assert isinstance(target, (ast.Name, ast.Attribute, ast.Subscript, ast.Tuple, ast.List, ast.Starred)), f"_visit_target called with a unexpected node type: {ast.dump(target)}"
+        assert hasattr(target, "ctx"), f"Something changed in the Python spec.... the node {ast.dump(target)} has no ctx attribute"
+
+        assert isinstance(target.ctx, ast.Store), f"_visit_target called on non-Store target: {ast.dump(target)}"
+
+        match target: 
+            case ast.Name():
+                # x = rhs  — base case, plain assignment, no transformation needed
+                self.current_context.append_stmt(ast.Assign(targets=[target], value=visited_rhs, lineno=0, col_offset=0))
+
+            case ast.Attribute():
+                # y.attr = rhs  →  _visit_expr(y).__setattr__("attr", rhs)
+                obj = self._visit_expr(target.value)
+                self.current_context.append_stmt(
+                    ast.Expr(value=ast.Call(
+                        func=ast.Attribute(value=obj, attr="__sidewinder_setattr__", ctx=ast.Load()),
+                        args=[ast.Constant(value = target.attr), visited_rhs],
+                        keywords=[],
+                    ), lineno=0, col_offset=0)
+                )
+
+            case ast.Subscript():
+                # y[i] = rhs  →  _visit_expr(y).__setitem__(_visit_expr(i), rhs)
+                obj = self._visit_expr(target.value)
+                idx = self._visit_expr(target.slice)
+                self.current_context.append_stmt(
+                    ast.Expr(value=ast.Call(
+                        func=ast.Attribute(value=obj, attr="__sidewinder_setitem__", ctx=ast.Load()),
+                        args=[idx, visited_rhs],
+                        keywords=[],
+                    ), lineno=0, col_offset=0)
+                )
+
+            case ast.Tuple() | ast.List():
+                starred_indices = [i for i, e in enumerate(target.elts)
+                                if isinstance(e, ast.Starred)]
+
+                if len(starred_indices) == 0:
+                    # simple case: x, y, z = rhs
+                    # emit: _iter = visited_rhs.__iter__()
+                    iter_tmp = self._fresh_temp()
+                    self.current_context.append_stmt(
+                        ast.Assign(
+                            targets=[ast.Name(id=iter_tmp, ctx=ast.Store())],
+                            value=ast.Call(
+                                func=ast.Attribute(value=visited_rhs, attr="__iter__", ctx=ast.Load()),
+                                args=[], keywords=[],
+                            ),
+                            lineno=0, col_offset=0,
+                        )
+                    )
+                    for elt in target.elts:
+                        # emit: _tmpN = _iter.__next__()
+                        next_tmp = self._fresh_temp()
+                        self.current_context.append_stmt(
+                            ast.Assign(
+                                targets=[ast.Name(id=next_tmp, ctx=ast.Store())],
+                                value=ast.Call(
+                                    func=ast.Attribute(
+                                        value=ast.Name(id=iter_tmp, ctx=ast.Load()),
+                                        attr="__next__",
+                                        ctx=ast.Load(),
+                                    ),
+                                    args=[], keywords=[],
+                                ),
+                                lineno=0, col_offset=0,
+                            )
+                        )
+                        self._visit_target(elt, ast.Name(id=next_tmp, ctx=ast.Load()))
+
+                elif len(starred_indices) == 1:
+                    raise NotImplementedError("starred unpacking in tuple target")
+
+                else:
+                    raise ValueError("multiple starred targets in unpacking — illegal Python")
+
+            case ast.Starred():
+                # should only appear inside Tuple/List, never as a top-level target
+                # e.g.  *x = rhs  is illegal Python
+                raise ValueError("starred target outside of tuple unpacking")
+
+            case _:
+                # anything else: func() = rhs, (x + y) = rhs, literal = rhs etc.
+                raise NotImplementedError(f"unsupported assignment target: {ast.dump(target)}")
+
 
     # ========== Overloads for type hinting =============
 
@@ -77,7 +176,7 @@ class SidewinderTransformer(ast.NodeTransformer):
     def visit(self, node: ast.stmt) -> Union[ast.stmt, List[ast.stmt]]: ...
 
     @overload
-    def visit(self, node: ast.expr) -> tuple[List[ast.stmt], ast.expr]: ...
+    def visit(self, node: T) -> tuple[List[ast.stmt], T]: ...
 
     def visit(self, node: ast.AST) -> Any:
         return super().visit(node)
@@ -139,9 +238,7 @@ class SidewinderTransformer(ast.NodeTransformer):
             node.body = self._visit_list_of_stmts(node.body)
         
         # Transform decorators
-        with self.current_context.enter_context(node, "decorator_list") as c:
-            node.decorator_list 
-        node.decorator_list = [self.visit(dec) for dec in node.decorator_list]
+        node.decorator_list = [self._visit_expr(dec) for dec in node.decorator_list]     
         
         return node
     
@@ -160,12 +257,15 @@ class SidewinderTransformer(ast.NodeTransformer):
         self.current_scope.append(node.name)
         
         # Transform class body
-        node.body = [self.visit(stmt) for stmt in node.body]
+        node.body = self._visit_list_of_stmts(node.body)
         
-        # Transform decorators and bases
-        node.decorator_list = [self.visit(dec) for dec in node.decorator_list]
-        node.bases = [self.visit(base) for base in node.bases]
-        node.keywords = [self.visit(kw) for kw in node.keywords]
+        # Transform decorators
+        node.decorator_list = [self._visit_expr(dec) for dec in node.decorator_list]
+        # Transform bases
+        node.bases = [self._visit_expr(bas) for bas in node.bases]
+        # Transform keywords
+        for kw in node.keywords:
+            kw.value = self._visit_expr(kw.value)
         
         self.current_scope.pop()
         return node
@@ -173,82 +273,92 @@ class SidewinderTransformer(ast.NodeTransformer):
     def visit_Return(self, node: ast.Return) -> Any:
         """Transform return statement - transform the return value."""
         if node.value:
-            transformed = self.visit(node.value)
-            if isinstance(transformed, list):
-                assert len(transformed) > 0, f"Expect non zero number of statements parsing {ast.unparse(node.value)}"
-                node.value = transformed[-1]
-            node.value = self.visit(node.value)
+            node.value = self._visit_expr(node.value)
         return node
     
     def visit_Delete(self, node: ast.Delete) -> Any:
         """Transform del statement."""
-        # TODO: Should del x become x.__sidewinder_del__(__sidewinder_state)?
-        node.targets = [self.visit(target) for target in node.targets]
+        new_targets = []
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                # Case 1: del variable_name
+                # Just a name binding removal - keep as is
+                new_targets.append(target)
+            else:
+                raise NotImplementedError("TBI")
+                # TODO: Should del x become x.__sidewinder_del__(__sidewinder_state)?
+            
+        node.targets = new_targets
         return node
     
-    def visit_Assign(self, node: ast.Assign) -> Any:
+    def visit_Assign(self, node: ast.Assign) -> None:
         """Transform assignment statement - transform value."""
-        node.value = self.visit(node.value)
-        node.targets = [self.visit(target) for target in node.targets]
-        return node
+        transformed_value = self._visit_expr(node.value)
+        if len(node.targets) != 1:
+            raise NotImplementedError(f"Sidewinder currently only supports a single target for assign statements like {ast.unparse(node)}")
+        for target in node.targets:
+            self._visit_target(target, transformed_value)
+        return None
     
-    def visit_AnnAssign(self, node: ast.AnnAssign) -> Any:
-        """Transform annotated assignment."""
-        if node.value:
-            node.value = self.visit(node.value)
-        node.target = self.visit(node.target)
-        node.annotation = self.visit(node.annotation)
-        return node
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        """Transform annotated assignment statement."""
+        # Transform the annotation (it's an expr)
+        node.annotation = self._visit_expr(node.annotation)
+        # Transform the value if it exists (can be None)
+        if node.value is not None:
+            self._visit_target(node.target, self._visit_expr(node.value))
+        return None
     
     def visit_AugAssign(self, node: ast.AugAssign) -> Any:
-        """
-        Transform augmented assignment: a += b
-        
-        Becomes: a = a.__sidewinder_iadd__(b, __sidewinder_state)
-        Or fallback to: a = a.__sidewinder_add__(b, __sidewinder_state)
-        """
-        # Map operator to dunder method
         op_map = {
-            ast.Add: 'add',
-            ast.Sub: 'sub',
-            ast.Mult: 'mult',
-            ast.Div: 'truediv',
+            ast.Add:      'add',
+            ast.Sub:      'sub',
+            ast.Mult:     'mul',
+            ast.Div:      'truediv',
             ast.FloorDiv: 'floordiv',
-            ast.Mod: 'mod',
-            ast.Pow: 'pow',
-            ast.LShift: 'lshift',
-            ast.RShift: 'rshift',
-            ast.BitOr: 'or',
-            ast.BitXor: 'xor',
-            ast.BitAnd: 'and',
-            ast.MatMult: 'matmul',
+            ast.Mod:      'mod',
+            ast.Pow:      'pow',
+            ast.LShift:   'lshift',
+            ast.RShift:   'rshift',
+            ast.BitOr:    'or',
+            ast.BitXor:   'xor',
+            ast.BitAnd:   'and',
+            ast.MatMult:  'matmul',
         }
-        
+
         op_name = op_map.get(type(node.op))
         if not op_name:
-            # Fallback - shouldn't happen
-            self.generic_visit(node)
-            return node
-        
-        # Try in-place version first (__iadd__), fallback to regular (__add__)
-        # For now, just use the in-place version
+            raise NotImplementedError(f"Unhandled op: {node.op}")
+
         method_name = f'__sidewinder_i{op_name}__'
-        
-        # Create: a = a.__sidewinder_iadd__(b, __sidewinder_state)
-        new_assign = ast.Assign(
-            targets=[node.target],
-            value=ast.Call(
-                func=ast.Attribute(
-                    value=self.visit(node.target),
-                    attr=method_name,
-                    ctx=ast.Load()
-                ),
-                args=[self.visit(node.value), ast.Name(id='__sidewinder_state', ctx=ast.Load())],
-                keywords=[]
+
+        read_target = copy.deepcopy(node.target)
+        read_target.ctx = ast.Load()
+        rhs_value = ast.Call(
+            func=ast.Attribute(
+                value=self._visit_expr(read_target),
+                attr=method_name,
+                ctx=ast.Load(),
+            ),
+            args=[self._visit_expr(node.value)],
+            keywords=[
+                ast.keyword(
+                    arg='__sidewinder_state',
+                    value=ast.Name(id='__sidewinder_state', ctx=ast.Load()),
+                )
+            ],
+        )
+
+        tmp = self._fresh_temp()
+        self.current_context.append_stmt(
+            ast.Assign(
+                targets=[ast.Name(id=tmp, ctx=ast.Store())],
+                value=rhs_value,
+                lineno=0, col_offset=0,
             )
         )
-        
-        return new_assign
+        self._visit_target(node.target, ast.Name(id=tmp, ctx=ast.Load()))
+
     
     def visit_For(self, node: ast.For) -> Any:
         """
