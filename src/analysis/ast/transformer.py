@@ -519,12 +519,50 @@ class SidewinderTransformer(ast.NodeTransformer):
 
         return try_block
         
-    def visit_If(self, node: ast.If) -> Any:
-        """Transform if statement - transform condition and bodies."""
-        node.test = self.visit(node.test)
-        node.body = [self.visit(stmt) for stmt in node.body]
-        node.orelse = [self.visit(stmt) for stmt in node.orelse]
-        return node
+    def visit_If(self, node: ast.If) -> ast.If:
+        """
+        If statement stays as-is, just transform test, body and orelse.
+        
+        if test:
+            body
+        else:
+            orelse
+        
+        Becomes:
+        if test.__sidewinder_bool__(__sidewinder_state):
+            body
+        else:
+            orelse
+        """
+        transformed_test = ast.Call(
+            func=ast.Attribute(
+                value=self._visit_expr(node.test),
+                attr='__sidewinder_bool__',
+                ctx=ast.Load(),
+            ),
+            args=[ast.Name(id='__sidewinder_state', ctx=ast.Load())],
+            keywords=[],
+        )
+
+        if_node = ast.If(
+            test=transformed_test,
+            body=[],
+            orelse=[],
+            lineno=0, col_offset=0,
+        )
+
+        with self.current_context.enter_context(if_node, "body"):
+            transformed_body = self._visit_list_of_stmts(node.body)
+        if_node.body.extend(transformed_body)
+
+        if node.orelse:
+            with self.current_context.enter_context(if_node, "orelse"):
+                transformed_orelse = self._visit_list_of_stmts(node.orelse)
+            if_node.orelse.extend(transformed_orelse)
+
+        # TODO: Will want to inject a call to a function which does path joining at runtime
+
+        return if_node
     
     def visit_With(self, node: ast.With) -> Any:
         """
