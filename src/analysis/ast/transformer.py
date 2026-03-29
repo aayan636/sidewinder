@@ -481,13 +481,44 @@ class SidewinderTransformer(ast.NodeTransformer):
 
         return [iter_assign, while_loop]
     
-    def visit_While(self, node: ast.While) -> Any:
-        """Transform while loop - transform condition and body."""
-        node.test = self.visit(node.test)
-        node.body = [self.visit(stmt) for stmt in node.body]
-        node.orelse = [self.visit(stmt) for stmt in node.orelse]
-        return node
-    
+    def visit_While(self, node: ast.While) -> ast.While:
+        """
+        While loop stays as-is, just transform test and body.
+        
+        while test:
+            body
+        
+        Becomes:
+        while test.__sidewinder_bool__(__sidewinder_state):
+            body
+        """
+        if node.orelse:
+            raise NotImplementedError("while/else not supported")
+
+        transformed_test = ast.Call(
+            func=ast.Attribute(
+                value=self._visit_expr(node.test),
+                attr='__sidewinder_bool__',
+                ctx=ast.Load(),
+            ),
+            args=[ast.Name(id='__sidewinder_state', ctx=ast.Load())],
+            keywords=[],
+        )
+
+        try_block = ast.While(
+            test=transformed_test,
+            body=[],
+            orelse=[],
+            lineno=0, col_offset=0,
+        )
+
+        with self.current_context.enter_context(try_block, "body"):
+            transformed_body = self._visit_list_of_stmts(node.body)
+
+        try_block.body.extend(transformed_body)
+
+        return try_block
+        
     def visit_If(self, node: ast.If) -> Any:
         """Transform if statement - transform condition and bodies."""
         node.test = self.visit(node.test)
