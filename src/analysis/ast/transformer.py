@@ -725,28 +725,197 @@ class SidewinderTransformer(ast.NodeTransformer):
 
         return ast.Expr(value=call, lineno=0, col_offset=0)
     
-    def visit_Try(self, node: ast.Try) -> Any:
-        """Transform try statement."""
-        node.body = [self.visit(stmt) for stmt in node.body]
-        node.handlers = [self.visit(handler) for handler in node.handlers]
-        node.orelse = [self.visit(stmt) for stmt in node.orelse]
-        node.finalbody = [self.visit(stmt) for stmt in node.finalbody]
-        return node
+    def visit_Try(self, node: ast.Try) -> list[ast.stmt]:
+        """
+        Transform try statement.
+        
+        try:
+            body
+        except ExcType0 as e0:
+            handler_body_0
+        except ExcType1:
+            handler_body_1
+        except:
+            handler_body_2
+        else:
+            orelse_body
+        finally:
+            finally_body
+
+        Becomes:
+
+        # body
+        body<transformed>
+
+        # handler 0 — type with binding
+        try:
+            symbolic_exc_0 = ExcType0<visit_expr>
+            __sidewinder_state_exc_0 = __sidewinder_check_exception__(symbolic_exc_0, __sidewinder_state=__sidewinder_state)
+            e0 = __sidewinder_current_exception__(__sidewinder_state=__sidewinder_state_exc_0)
+            handler_body_0<transformed>
+        except:
+            pass
+
+        # handler 1 — type without binding
+        try:
+            symbolic_exc_1 = ExcType1<visit_expr>
+            __sidewinder_state_exc_1 = __sidewinder_check_exception__(symbolic_exc_1, __sidewinder_state=__sidewinder_state)
+            handler_body_1<transformed>
+        except:
+            pass
+
+        # handler 2 — bare except
+        try:
+            __sidewinder_state_exc_2 = __sidewinder_check_exception__(__sidewinder_any_exception__, __sidewinder_state=__sidewinder_state)
+            handler_body_2<transformed>
+        except:
+            pass
+
+        # orelse — uses __sidewinder_state from after body
+        orelse_body<transformed>
+
+        # merge all paths
+        __sidewinder_state = __sidewinder_merge__(
+            __sidewinder_state,
+            __sidewinder_state_exc_0,
+            __sidewinder_state_exc_1,
+            __sidewinder_state_exc_2,
+        )
+
+        # finally
+        finally_body<transformed>
+        """
+
+        result: list[ast.stmt] = []
+
+        # body
+        result.extend(self._visit_list_of_stmts(node.body))
+
+        # handlers
+        handler_state_names: list[str] = []
+        for i, handler in enumerate(node.handlers):
+            state_name = f'__sidewinder_state_exc_{i}'
+            handler_state_names.append(state_name)
+
+            dummy_try = ast.Try(
+                body=[],
+                handlers=[
+                    ast.ExceptHandler(
+                        type=None,
+                        name=None,
+                        body=[ast.Pass()],
+                        lineno=0, col_offset=0,
+                    )
+                ],
+                orelse=[],
+                finalbody=[],
+                lineno=0, col_offset=0,
+            )
+
+            # emit comment describing this handler
+            if handler.type is not None:
+                handler_desc = f"handler {i} — type {'with' if handler.name else 'without'} binding: {ast.unparse(handler.type)}{f' as {handler.name}' if handler.name else ''}"
+            else:
+                handler_desc = f"handler {i} — bare except"
+            self.current_context.append_stmt(ast.Expr(
+                value=ast.Constant(value=f"# {handler_desc}"),
+                lineno=0, col_offset=0,
+            ))
+
+            with self.current_context.enter_context(dummy_try, "body"):
+                if handler.type is not None:
+                    exc_tmp = self._fresh_temp(f"__symbolic_exc_{i}")
+                    self.current_context.append_stmt(ast.Assign(
+                        targets=[ast.Name(id=exc_tmp, ctx=ast.Store())],
+                        value=self._visit_expr(handler.type),
+                        lineno=0, col_offset=0,
+                    ))
+                    check_arg = ast.Name(id=exc_tmp, ctx=ast.Load())
+                else:
+                    check_arg = ast.Name(id='__sidewinder_any_exception__', ctx=ast.Load())
+
+                self.current_context.append_stmt(ast.Assign(
+                    targets=[ast.Name(id=state_name, ctx=ast.Store())],
+                    value=ast.Call(
+                        func=ast.Name(id='__sidewinder_check_exception__', ctx=ast.Load()),
+                        args=[check_arg],
+                        keywords=[ast.keyword(
+                            arg='__sidewinder_state',
+                            value=ast.Name(id='__sidewinder_state', ctx=ast.Load()),
+                        )],
+                    ),
+                    lineno=0, col_offset=0,
+                ))
+
+                if handler.name is not None:
+                    self.current_context.append_stmt(ast.Assign(
+                        targets=[ast.Name(id=handler.name, ctx=ast.Store())],
+                        value=ast.Call(
+                            func=ast.Name(id='__sidewinder_current_exception__', ctx=ast.Load()),
+                            args=[],
+                            keywords=[ast.keyword(
+                                arg='__sidewinder_state',
+                                value=ast.Name(id=state_name, ctx=ast.Load()),
+                            )],
+                        ),
+                        lineno=0, col_offset=0,
+                    ))
+
+                transformed_handler_body = self._visit_list_of_stmts(handler.body)
+
+            dummy_try.body.extend(transformed_handler_body)
+            result.append(dummy_try)
+
+        # orelse
+        if node.orelse:
+            result.append(ast.Expr(
+                value=ast.Constant(value="# orelse — uses __sidewinder_state from after body"),
+                lineno=0, col_offset=0,
+            ))
+            result.extend(self._visit_list_of_stmts(node.orelse))
+
+        # merge
+        result.append(ast.Expr(
+            value=ast.Constant(value="# merge all paths"),
+            lineno=0, col_offset=0,
+        ))
+        result.append(ast.Assign(
+            targets=[ast.Name(id='__sidewinder_state', ctx=ast.Store())],
+            value=ast.Call(
+                func=ast.Name(id='__sidewinder_merge__', ctx=ast.Load()),
+                args=[
+                    ast.Name(id='__sidewinder_state', ctx=ast.Load()),
+                    *[ast.Name(id=name, ctx=ast.Load()) for name in handler_state_names],
+                ],
+                keywords=[],
+            ),
+            lineno=0, col_offset=0,
+        ))
+
+        # finally
+        if node.finalbody:
+            result.append(ast.Expr(
+                value=ast.Constant(value="# finally — always runs, gets merged state"),
+                lineno=0, col_offset=0,
+            ))
+            result.extend(self._visit_list_of_stmts(node.finalbody))
+
+        return result
     
     def visit_TryStar(self, node: ast.TryStar) -> Any:
         """Transform try-except* statement (exception groups)."""
-        node.body = [self.visit(stmt) for stmt in node.body]
-        node.handlers = [self.visit(handler) for handler in node.handlers]
-        node.orelse = [self.visit(stmt) for stmt in node.orelse]
-        node.finalbody = [self.visit(stmt) for stmt in node.finalbody]
-        return node
+        raise NotImplementedError(
+            "except* (TryStar) not supported. "
+            "Requires powerset path semantics — multiple handlers can fire simultaneously "
+            "on the same ExceptionGroup, breaking the mutually exclusive path assumption "
+            "in __sidewinder_merge__. Current model would produce imprecise over-approximation. "
+            "See: PEP 654, Python 3.11+"
+            f"Problematic node: {ast.unparse(node)}"
+        )
     
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> Any:
         """Transform exception handler."""
-        if node.type:
-            node.type = self.visit(node.type)
-        node.body = [self.visit(stmt) for stmt in node.body]
-        return node
+        raise ValueE("ExceptHandler should not be called, it should be handled directly in visit_Try and visit_TryStar (if implemented)")
     
     def visit_Assert(self, node: ast.Assert) -> Any:
         """Transform assert statement."""
