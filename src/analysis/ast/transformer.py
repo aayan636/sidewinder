@@ -962,9 +962,12 @@ class SidewinderTransformer(ast.NodeTransformer):
         """Nonlocal statements pass through unchanged."""
         return node
     
-    def visit_Expr(self, node: ast.Expr) -> Any:
-        """Transform expression statement."""
-        node.value = self.visit(node.value)
+    def visit_Expr(self, node: ast.Expr) -> ast.Expr:
+        """
+        Transform expression statement — a bare expression used as a statement.
+        e.g. function calls whose return value is discarded: foo(), obj.method()
+        """
+        node.value = self._visit_expr(node.value)
         return node
     
     def visit_Pass(self, node: ast.Pass) -> Any:
