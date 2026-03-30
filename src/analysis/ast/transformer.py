@@ -690,13 +690,40 @@ class SidewinderTransformer(ast.NodeTransformer):
 
         return [ctx_assign, try_block]
     
-    def visit_Raise(self, node: ast.Raise) -> Any:
-        """Transform raise statement."""
-        if node.exc:
-            node.exc = self.visit(node.exc)
-        if node.cause:
-            node.cause = self.visit(node.cause)
-        return node
+    def visit_Raise(self, node: ast.Raise) -> ast.Expr:
+        """
+        Transform raise to explicit sidewinder call.
+        
+        raise exc
+        becomes:
+        __sidewinder_raise__(exc, __sidewinder_state=__sidewinder_state)
+        
+        raise exc from cause
+        becomes:
+        __sidewinder_raise__(exc, cause, __sidewinder_state=__sidewinder_state)
+        
+        raise  (bare re-raise)
+        becomes:
+        __sidewinder_reraise__(__sidewinder_state=__sidewinder_state)
+        """
+        if node.exc is None:
+            # bare raise
+            call = ast.Call(
+                func=ast.Name(id='__sidewinder_reraise__', ctx=ast.Load()),
+                args=[],
+                keywords=[ast.keyword(arg='__sidewinder_state', value=ast.Name(id='__sidewinder_state', ctx=ast.Load()))],
+            )
+        else:
+            args = [self._visit_expr(node.exc)]
+            if node.cause is not None:
+                args.append(self._visit_expr(node.cause))
+            call = ast.Call(
+                func=ast.Name(id='__sidewinder_raise__', ctx=ast.Load()),
+                args=args,
+                keywords=[ast.keyword(arg='__sidewinder_state', value=ast.Name(id='__sidewinder_state', ctx=ast.Load()))],
+            )
+
+        return ast.Expr(value=call, lineno=0, col_offset=0)
     
     def visit_Try(self, node: ast.Try) -> Any:
         """Transform try statement."""
