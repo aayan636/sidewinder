@@ -974,13 +974,45 @@ class SidewinderTransformer(ast.NodeTransformer):
         """Pass statements are unchanged."""
         return node
     
-    def visit_Break(self, node: ast.Break) -> Any:
-        """Break statements are unchanged."""
-        return node
-    
-    def visit_Continue(self, node: ast.Continue) -> Any:
-        """Continue statements are unchanged."""
-        return node
+    def visit_Break(self, node: ast.Break) -> ast.Expr:
+        """
+        Transform break to explicit sidewinder call.
+        
+        break
+        becomes:
+        __sidewinder_break__(__sidewinder_state=__sidewinder_state)
+        """
+        return ast.Expr(
+            value=ast.Call(
+                func=ast.Name(id='__sidewinder_break__', ctx=ast.Load()),
+                args=[],
+                keywords=[ast.keyword(
+                    arg='__sidewinder_state',
+                    value=ast.Name(id='__sidewinder_state', ctx=ast.Load()),
+                )],
+            ),
+            lineno=0, col_offset=0,
+        )
+
+    def visit_Continue(self, node: ast.Continue) -> ast.Expr:
+        """
+        Transform continue to explicit sidewinder call.
+        
+        continue
+        becomes:
+        __sidewinder_continue__(__sidewinder_state=__sidewinder_state)
+        """
+        return ast.Expr(
+            value=ast.Call(
+                func=ast.Name(id='__sidewinder_continue__', ctx=ast.Load()),
+                args=[],
+                keywords=[ast.keyword(
+                    arg='__sidewinder_state',
+                    value=ast.Name(id='__sidewinder_state', ctx=ast.Load()),
+                )],
+            ),
+            lineno=0, col_offset=0,
+        )
     
     def visit_Match(self, node: ast.Match) -> Any:
         """Transform match statement."""
