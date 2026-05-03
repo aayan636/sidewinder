@@ -21,6 +21,7 @@ class SidewinderHookNames(Enum):
 
     # Control Flow
     SIDEWINDER_FIXED_POINT = auto()
+    SIDEWINDER_UNION = auto()
     SIDEWINDER_RETURN = auto()
     SIDEWINDER_CONTINUE = auto()
     SIDEWINDER_BREAK = auto()
