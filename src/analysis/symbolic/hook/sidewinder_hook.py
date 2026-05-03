@@ -28,7 +28,7 @@ class SidewinderHookNames(Enum):
     SIDEWINDER_CALL = auto()
 
     # Exception Semantics
-    SIDEWINDER_GET_EXCEPTION_CONDITION = auto()
+    SIDEWINDER_EXCEPTION_CONDITION_AND_OBJECT = auto()
     SIDEWINDER_THROWN = auto()
     SIDEWINDER_NOT_THROWN = auto()
 

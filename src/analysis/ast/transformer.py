@@ -68,12 +68,20 @@ class SidewinderTransformer(ast.NodeTransformer):
             value=ast.Name(id="__sidewinder_state", ctx=ast.Load())
         )
     
-    def _make_hook_call(self, hook: SidewinderHookNames, *args: ast.expr) -> ast.Call:
-        """Create a sidewinder hook call with __sidewinder_state threaded through."""
+    def _make_hook_call(
+        self,
+        hook: SidewinderHookNames,
+        *args: ast.expr,
+        extra_kwargs: Optional[Dict[str, ast.expr]] = None
+    ) -> ast.Call:
+        """Create a sidewinder hook call with __sidewinder_state__ threaded through."""
+        keywords = [
+            ast.keyword(arg=k, value=v) for k, v in (extra_kwargs or {}).items()
+        ] + [self._sidewinder_state_keyword()]
         return ast.Call(
             func=ast.Name(id=f"__{hook.name.lower()}__", ctx=ast.Load()),
             args=list(args),
-            keywords=[self._sidewinder_state_keyword()],
+            keywords=keywords,
         )
     
     def _visit_list_of_stmts(self, stmts: List[ast.stmt]) -> List[ast.stmt]:
@@ -634,24 +642,25 @@ class SidewinderTransformer(ast.NodeTransformer):
             lineno=0, col_offset=0
         ))
 
-        # sidewinder_push_false_condition(t, __sidewinder_state)
-        result.append(ast.Expr(
-            value=self._make_hook_call(
-                SidewinderHookNames.SIDEWINDER_CONDITION_FALSE,
-                ast.Name(id=temp, ctx=ast.Load())
-            ),
-            lineno=0, col_offset=0
-        ))
-
-        # <transformed else block> (empty if no else)
         if node.orelse:
+            # sidewinder_push_false_condition(t, __sidewinder_state)
+            result.append(ast.Expr(
+                value=self._make_hook_call(
+                    SidewinderHookNames.SIDEWINDER_CONDITION_FALSE,
+                    ast.Name(id=temp, ctx=ast.Load())
+                ),
+                lineno=0, col_offset=0
+            ))
+
+            # <transformed else block> (empty if no else)
+        
             result.extend(self._visit_list_of_stmts(node.orelse))
 
-        # sidewinder_pop_condition(__sidewinder_state)
-        result.append(ast.Expr(
-            value=self._make_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
-            lineno=0, col_offset=0
-        ))
+            # sidewinder_pop_condition(__sidewinder_state)
+            result.append(ast.Expr(
+                value=self._make_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
+                lineno=0, col_offset=0
+            ))
 
         return result
     
@@ -813,18 +822,16 @@ class SidewinderTransformer(ast.NodeTransformer):
 
         return ast.Expr(value=call, lineno=0, col_offset=0)
     
-    def visit_Try(self, node: ast.Try) -> list[ast.stmt]:
+    def visit_Try(self, node: ast.Try) -> List[ast.stmt]:
         """
-        Transform try statement.
-        
         try:
             body
-        except ExcType0 as e0:
-            handler_body_0
-        except ExcType1:
-            handler_body_1
+        except <expr0> as e0:
+            handler_0
+        except <expr1>:
+            handler_1
         except:
-            handler_body_2
+            handler_2
         else:
             orelse_body
         finally:
@@ -832,160 +839,138 @@ class SidewinderTransformer(ast.NodeTransformer):
 
         Becomes:
 
-        # body
-        body<transformed>
+        # 1. transformed body runs flat — exceptions recorded as may-effects automatically
+        <transformed body>
 
-        # handler 0 — type with binding
-        try:
-            symbolic_exc_0 = ExcType0<visit_expr>
-            __sidewinder_state_exc_0 = __sidewinder_check_exception__(symbolic_exc_0, __sidewinder_state=__sidewinder_state)
-            e0 = __sidewinder_current_exception__(__sidewinder_state=__sidewinder_state_exc_0)
-            handler_body_0<transformed>
-        except:
-            pass
+        # 2. each except block — guarded by condition that exception was thrown
+        #    already_handled grows with each handler to exclude previously caught exceptions
+        __sidewinder_exc_type0__ = <_visit_expr(expr0)>
+        __sidewinder_cond0__, e0 = __sidewinder_exception_condition_and_object__(
+            __sidewinder_exc_type0__, already_handled=[], __sidewinder_state__)
+        __sidewinder_condition_true__(__sidewinder_cond0__, __sidewinder_state__)
+        <transformed handler_0>
+        __sidewinder_pop_condition__(__sidewinder_state__)
 
-        # handler 1 — type without binding
-        try:
-            symbolic_exc_1 = ExcType1<visit_expr>
-            __sidewinder_state_exc_1 = __sidewinder_check_exception__(symbolic_exc_1, __sidewinder_state=__sidewinder_state)
-            handler_body_1<transformed>
-        except:
-            pass
+        __sidewinder_exc_type1__ = <_visit_expr(expr1)>
+        __sidewinder_cond1__, _ = __sidewinder_exception_condition_and_object__(
+            __sidewinder_exc_type1__, already_handled=[__sidewinder_cond0__], __sidewinder_state__)
+        __sidewinder_condition_true__(__sidewinder_cond1__, __sidewinder_state__)
+        <transformed handler_1>
+        __sidewinder_pop_condition__(__sidewinder_state__)
 
-        # handler 2 — bare except
-        try:
-            __sidewinder_state_exc_2 = __sidewinder_check_exception__(__sidewinder_any_exception__, __sidewinder_state=__sidewinder_state)
-            handler_body_2<transformed>
-        except:
-            pass
+        # bare except — None means catch everything not caught above
+        __sidewinder_cond2__, _ = __sidewinder_exception_condition_and_object__(
+            None, already_handled=[__sidewinder_cond0__, __sidewinder_cond1__], __sidewinder_state__)
+        __sidewinder_condition_true__(__sidewinder_cond2__, __sidewinder_state__)
+        <transformed handler_2>
+        __sidewinder_pop_condition__(__sidewinder_state__)
 
-        # orelse — uses __sidewinder_state from after body
-        orelse_body<transformed>
+        # 3. else block — negation of ALL exception conditions
+        __sidewinder_condition_false__(__sidewinder_cond0__, __sidewinder_state__)
+        __sidewinder_condition_false__(__sidewinder_cond1__, __sidewinder_state__)
+        __sidewinder_condition_false__(__sidewinder_cond2__, __sidewinder_state__)
+        <transformed orelse_body>
+        __sidewinder_pop_condition__(__sidewinder_state__)
+        __sidewinder_pop_condition__(__sidewinder_state__)
+        __sidewinder_pop_condition__(__sidewinder_state__)
 
-        # merge all paths
-        __sidewinder_state = __sidewinder_merge__(
-            __sidewinder_state,
-            __sidewinder_state_exc_0,
-            __sidewinder_state_exc_1,
-            __sidewinder_state_exc_2,
-        )
-
-        # finally
-        finally_body<transformed>
+        # 4. finally — ambient context, no push/pop
+        <transformed finally_body>
         """
 
-        result: list[ast.stmt] = []
+        result: List[ast.stmt] = []
 
-        # body
+        # --- 1. Transform try body ---
         result.extend(self._visit_list_of_stmts(node.body))
 
-        # handlers
-        handler_state_names: list[str] = []
-        for i, handler in enumerate(node.handlers):
-            state_name = f'__sidewinder_state_exc_{i}'
-            handler_state_names.append(state_name)
+        # Track condition temps and exc type temps for already_handled
+        exception_cond_temps: List[str] = []
 
-            dummy_try = ast.Try(
-                body=[],
-                handlers=[
-                    ast.ExceptHandler(
-                        type=None,
-                        name=None,
-                        body=[ast.Pass()],
-                        lineno=0, col_offset=0,
-                    )
-                ],
-                orelse=[],
-                finalbody=[],
-                lineno=0, col_offset=0,
-            )
+        # --- 2. Transform each except handler ---
+        for handler in node.handlers:
+            exc_type = handler.type
+            exc_name = handler.name
 
-            # emit comment describing this handler
-            if handler.type is not None:
-                handler_desc = f"handler {i} — type {'with' if handler.name else 'without'} binding: {ast.unparse(handler.type)}{f' as {handler.name}' if handler.name else ''}"
+            # Evaluate exception type expression symbolically
+            if exc_type is not None:
+                exc_type_temp = self._fresh_temp("__sidewinder_exc_type")
+                result.append(ast.Assign(
+                    targets=[ast.Name(id=exc_type_temp, ctx=ast.Store())],
+                    value=self._visit_expr(exc_type),
+                    lineno=0, col_offset=0,
+                ))
+                exc_type_arg = ast.Name(id=exc_type_temp, ctx=ast.Load())
             else:
-                handler_desc = f"handler {i} — bare except"
-            self.current_context.append_stmt(ast.Expr(
-                value=ast.Constant(value=f"# {handler_desc}"),
+                exc_type_arg = ast.Constant(value=None)
+
+            # Get condition and exception object
+            # already_handled = all condition temps collected so far
+            cond_temp = self._fresh_temp("__sidewinder_cond")
+            discard_temp = self._fresh_temp("__sidewinder_discard")
+
+            result.append(ast.Assign(
+                targets=[ast.Tuple(
+                    elts=[
+                        ast.Name(id=cond_temp, ctx=ast.Store()),
+                        ast.Name(id=exc_name if exc_name else discard_temp, ctx=ast.Store()),
+                    ],
+                    ctx=ast.Store()
+                )],
+                value=self._make_hook_call(
+                    SidewinderHookNames.SIDEWINDER_EXCEPTION_CONDITION_AND_OBJECT,
+                    exc_type_arg,
+                    extra_kwargs={
+                        "already_handled": ast.List(
+                            elts=[ast.Name(id=c, ctx=ast.Load()) for c in exception_cond_temps],
+                            ctx=ast.Load()
+                        )
+                    }
+                ),
                 lineno=0, col_offset=0,
             ))
 
-            with self.current_context.enter_context(dummy_try, "body"):
-                if handler.type is not None:
-                    exc_tmp = self._fresh_temp(f"__symbolic_exc_{i}")
-                    self.current_context.append_stmt(ast.Assign(
-                        targets=[ast.Name(id=exc_tmp, ctx=ast.Store())],
-                        value=self._visit_expr(handler.type),
-                        lineno=0, col_offset=0,
-                    ))
-                    check_arg = ast.Name(id=exc_tmp, ctx=ast.Load())
-                else:
-                    check_arg = ast.Name(id='__sidewinder_any_exception__', ctx=ast.Load())
+            # Push exception condition
+            result.append(ast.Expr(
+                value=self._make_hook_call(
+                    SidewinderHookNames.SIDEWINDER_CONDITION_TRUE,
+                    ast.Name(id=cond_temp, ctx=ast.Load())
+                ),
+                lineno=0, col_offset=0,
+            ))
 
-                self.current_context.append_stmt(ast.Assign(
-                    targets=[ast.Name(id=state_name, ctx=ast.Store())],
-                    value=ast.Call(
-                        func=ast.Name(id='__sidewinder_check_exception__', ctx=ast.Load()),
-                        args=[check_arg],
-                        keywords=[ast.keyword(
-                            arg='__sidewinder_state',
-                            value=ast.Name(id='__sidewinder_state', ctx=ast.Load()),
-                        )],
+            # Transform handler body
+            result.extend(self._visit_list_of_stmts(handler.body))
+
+            # Pop exception condition
+            result.append(ast.Expr(
+                value=self._make_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
+                lineno=0, col_offset=0,
+            ))
+
+            # Add to already_handled for next handler
+            exception_cond_temps.append(cond_temp)
+
+        # --- 3. else block ---
+        if node.orelse:
+            for cond in exception_cond_temps:
+                result.append(ast.Expr(
+                    value=self._make_hook_call(
+                        SidewinderHookNames.SIDEWINDER_CONDITION_FALSE,
+                        ast.Name(id=cond, ctx=ast.Load())
                     ),
                     lineno=0, col_offset=0,
                 ))
 
-                if handler.name is not None:
-                    self.current_context.append_stmt(ast.Assign(
-                        targets=[ast.Name(id=handler.name, ctx=ast.Store())],
-                        value=ast.Call(
-                            func=ast.Name(id='__sidewinder_current_exception__', ctx=ast.Load()),
-                            args=[],
-                            keywords=[ast.keyword(
-                                arg='__sidewinder_state',
-                                value=ast.Name(id=state_name, ctx=ast.Load()),
-                            )],
-                        ),
-                        lineno=0, col_offset=0,
-                    ))
-
-                transformed_handler_body = self._visit_list_of_stmts(handler.body)
-
-            dummy_try.body.extend(transformed_handler_body)
-            result.append(dummy_try)
-
-        # orelse
-        if node.orelse:
-            result.append(ast.Expr(
-                value=ast.Constant(value="# orelse — uses __sidewinder_state from after body"),
-                lineno=0, col_offset=0,
-            ))
             result.extend(self._visit_list_of_stmts(node.orelse))
 
-        # merge
-        result.append(ast.Expr(
-            value=ast.Constant(value="# merge all paths"),
-            lineno=0, col_offset=0,
-        ))
-        result.append(ast.Assign(
-            targets=[ast.Name(id='__sidewinder_state', ctx=ast.Store())],
-            value=ast.Call(
-                func=ast.Name(id='__sidewinder_merge__', ctx=ast.Load()),
-                args=[
-                    ast.Name(id='__sidewinder_state', ctx=ast.Load()),
-                    *[ast.Name(id=name, ctx=ast.Load()) for name in handler_state_names],
-                ],
-                keywords=[],
-            ),
-            lineno=0, col_offset=0,
-        ))
+            for _ in exception_cond_temps:
+                result.append(ast.Expr(
+                    value=self._make_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
+                    lineno=0, col_offset=0,
+                ))
 
-        # finally
+        # --- 4. finally block ---
         if node.finalbody:
-            result.append(ast.Expr(
-                value=ast.Constant(value="# finally — always runs, gets merged state"),
-                lineno=0, col_offset=0,
-            ))
             result.extend(self._visit_list_of_stmts(node.finalbody))
 
         return result
