@@ -262,6 +262,7 @@ class SidewinderTransformer(ast.NodeTransformer):
         node.args.kw_defaults.append(None)
         
         # Transform function body
+        # TODO: Fixed point statement must be added
         with self.current_context.enter_context(node, "body") as c:
             node.body = self._visit_list_of_stmts(node.body)
         
