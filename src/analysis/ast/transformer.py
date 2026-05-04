@@ -68,7 +68,7 @@ class SidewinderTransformer(ast.NodeTransformer):
             value=ast.Name(id="__sidewinder_state", ctx=ast.Load())
         )
     
-    def _make_hook_call(
+    def _emit_hook_call(
         self,
         hook: SidewinderHookNames,
         *args: ast.expr,
@@ -561,7 +561,7 @@ class SidewinderTransformer(ast.NodeTransformer):
         with self.current_context.enter_context(while_node, "body") as c:
             # push true condition
             c.append_stmt(
-                ast.Expr(value=self._make_hook_call(
+                ast.Expr(value=self._emit_hook_call(
                     SidewinderHookNames.SIDEWINDER_CONDITION_TRUE,
                     ast.Name(id=cond_temp, ctx=ast.Load())
                 ), lineno=0, col_offset=0)
@@ -574,7 +574,7 @@ class SidewinderTransformer(ast.NodeTransformer):
             c.append_stmt(
                 ast.Assign(
                     targets=[ast.Name(id=cond_temp, ctx=ast.Store())],
-                    value=self._make_hook_call(
+                    value=self._emit_hook_call(
                         SidewinderHookNames.SIDEWINDER_UNION,
                         ast.Name(id=cond_temp, ctx=ast.Load()),
                         self._visit_expr(node.test),
@@ -587,13 +587,13 @@ class SidewinderTransformer(ast.NodeTransformer):
             c.append_stmt(
                 ast.Assign(
                     targets=[ast.Name(id=fixed_point_temp, ctx=ast.Store())],
-                    value=self._make_hook_call(SidewinderHookNames.SIDEWINDER_FIXED_POINT),
+                    value=self._emit_hook_call(SidewinderHookNames.SIDEWINDER_FIXED_POINT),
                     lineno=0, col_offset=0,
                 )
             )
 
             c.append_stmt(
-                ast.Expr(value=self._make_hook_call(
+                ast.Expr(value=self._emit_hook_call(
                     SidewinderHookNames.SIDEWINDER_POP_CONDITION,
                 ), lineno=0, col_offset=0),
             )
@@ -602,7 +602,7 @@ class SidewinderTransformer(ast.NodeTransformer):
 
         # push false condition after loop — no pop
         result.append(ast.Expr(
-            value=self._make_hook_call(
+            value=self._emit_hook_call(
                 SidewinderHookNames.SIDEWINDER_CONDITION_FALSE,
                 ast.Name(id=cond_temp, ctx=ast.Load())
             ),
@@ -626,7 +626,7 @@ class SidewinderTransformer(ast.NodeTransformer):
 
         # sidewinder_push_true_condition(t, __sidewinder_state)
         result.append(ast.Expr(
-            value=self._make_hook_call(
+            value=self._emit_hook_call(
                 SidewinderHookNames.SIDEWINDER_CONDITION_TRUE,
                 ast.Name(id=temp, ctx=ast.Load())
             ),
@@ -638,14 +638,14 @@ class SidewinderTransformer(ast.NodeTransformer):
 
         # sidewinder_pop_condition(__sidewinder_state)
         result.append(ast.Expr(
-            value=self._make_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
+            value=self._emit_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
             lineno=0, col_offset=0
         ))
 
         if node.orelse:
             # sidewinder_push_false_condition(t, __sidewinder_state)
             result.append(ast.Expr(
-                value=self._make_hook_call(
+                value=self._emit_hook_call(
                     SidewinderHookNames.SIDEWINDER_CONDITION_FALSE,
                     ast.Name(id=temp, ctx=ast.Load())
                 ),
@@ -658,7 +658,7 @@ class SidewinderTransformer(ast.NodeTransformer):
 
             # sidewinder_pop_condition(__sidewinder_state)
             result.append(ast.Expr(
-                value=self._make_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
+                value=self._emit_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
                 lineno=0, col_offset=0
             ))
 
@@ -916,7 +916,7 @@ class SidewinderTransformer(ast.NodeTransformer):
                     ],
                     ctx=ast.Store()
                 )],
-                value=self._make_hook_call(
+                value=self._emit_hook_call(
                     SidewinderHookNames.SIDEWINDER_EXCEPTION_CONDITION_AND_OBJECT,
                     exc_type_arg,
                     extra_kwargs={
@@ -931,7 +931,7 @@ class SidewinderTransformer(ast.NodeTransformer):
 
             # Push exception condition
             result.append(ast.Expr(
-                value=self._make_hook_call(
+                value=self._emit_hook_call(
                     SidewinderHookNames.SIDEWINDER_CONDITION_TRUE,
                     ast.Name(id=cond_temp, ctx=ast.Load())
                 ),
@@ -943,7 +943,7 @@ class SidewinderTransformer(ast.NodeTransformer):
 
             # Pop exception condition
             result.append(ast.Expr(
-                value=self._make_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
+                value=self._emit_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
                 lineno=0, col_offset=0,
             ))
 
@@ -954,7 +954,7 @@ class SidewinderTransformer(ast.NodeTransformer):
         if node.orelse:
             for cond in exception_cond_temps:
                 result.append(ast.Expr(
-                    value=self._make_hook_call(
+                    value=self._emit_hook_call(
                         SidewinderHookNames.SIDEWINDER_CONDITION_FALSE,
                         ast.Name(id=cond, ctx=ast.Load())
                     ),
@@ -965,7 +965,7 @@ class SidewinderTransformer(ast.NodeTransformer):
 
             for _ in exception_cond_temps:
                 result.append(ast.Expr(
-                    value=self._make_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
+                    value=self._emit_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
                     lineno=0, col_offset=0,
                 ))
 
