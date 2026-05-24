@@ -302,9 +302,10 @@ class SidewinderTransformer(ast.NodeTransformer):
     
     def visit_Return(self, node: ast.Return) -> Any:
         """Transform return statement - transform the return value."""
-        if node.value:
-            node.value = self._visit_expr(node.value)
-        return node
+        return ast.Expr(value=self._emit_hook_call(
+            SidewinderHookNames.SIDEWINDER_CONDITION_TRUE,
+            self._visit_expr(node.value) if node.value else ast.Constant(value=None)
+        ), lineno=0, col_offset=0)
     
     def visit_Delete(self, node: ast.Delete) -> Any:
         """Transform del statement."""
