@@ -47,10 +47,11 @@ class SidewinderHookNames(Enum):
     SIDEWINDER_WRITE_HEAP = auto()
     SIDEWINDER_WRITE_NONLOCAL = auto()
 
-    # Dunder Operators
+    # Operators
     SIDEWINDER_BOOL = auto()
     SIDEWINDER_UNARY_OP = auto()
     SIDEWINDER_BINARY_OP = auto()
+    SIDEWINDER_ASSERT = auto()
 
 
 class SidewinderHook:
