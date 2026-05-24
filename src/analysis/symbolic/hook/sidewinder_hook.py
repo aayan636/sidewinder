@@ -25,6 +25,9 @@ class SidewinderHookNames(Enum):
     SIDEWINDER_RETURN = auto()
     SIDEWINDER_CONTINUE = auto()
     SIDEWINDER_BREAK = auto()
+    SIDEWINDER_RAISE = auto()
+    SIDEWINDER_YIELD = auto()
+    SIDEWINDER_YIELD_FROM = auto()
     SIDEWINDER_CALL = auto()
 
     # Exception Semantics
