@@ -1,7 +1,7 @@
 from enum import Enum, auto
 from typing import Any, Protocol
 
-from analysis.symbolic.runtime.state import SidewinderState
+from analysis.symbolic.runtime.memory.state import SidewinderState
 
 
 class SidewinderHookCallable(Protocol):
