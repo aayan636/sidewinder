@@ -398,21 +398,76 @@ class SidewinderTransformer(
             keywords=[]
         )
     
-    def visit_ListComp(self, node: ast.ListComp) -> Any:
+    def visit_ListComp(self, node: ast.ListComp) -> tuple[list[ast.stmt], ast.expr]:
         """
-        Transform list comprehension to explicit loop.
-        
-        [x for x in items] ->
+        [expr for x in xs if pred]
+
+        ->
         __result = []
-        for x in items:
-            __result.append(x)
+        for x in xs:
+            if pred:
+                __result.append(expr)
+
+        return __result
         """
-        # TODO: Need to convert comprehension to statements
-        # This requires returning multiple statements, which is tricky in expression context
-        # For now, leave as-is
-        self.generic_visit(node)
-        return node
-    
+        result_name = self._fresh_temp("__sidewinder_listcomp")
+
+        init_stmt = ast.Assign(
+            targets=[ast.Name(id=result_name, ctx=ast.Store())],
+            value=ast.List(elts=[], ctx=ast.Load()),
+            lineno=0,
+            col_offset=0,
+        )
+
+        append_stmt = ast.Expr(
+            value=ast.Call(
+                func=ast.Attribute(
+                    value=ast.Name(id=result_name, ctx=ast.Load()),
+                    attr="append",
+                    ctx=ast.Load(),
+                ),
+                args=[node.elt],
+                keywords=[],
+            ),
+            lineno=0,
+            col_offset=0,
+        )
+
+        body: list[ast.stmt] = [append_stmt]
+
+        #
+        # Build nested fors/ifs from inside out.
+        #
+        for gen in reversed(node.generators):
+            current_body: list[ast.stmt] = body
+
+            for if_expr in reversed(gen.ifs):
+                current_body = [
+                    ast.If(
+                        test=if_expr,
+                        body=current_body,
+                        orelse=[],
+                        lineno=0,
+                        col_offset=0,
+                    )
+                ]
+
+            body = [
+                ast.For(
+                    target=gen.target,
+                    iter=gen.iter,
+                    body=current_body,
+                    orelse=[],
+                    lineno=0,
+                    col_offset=0,
+                )
+            ]
+
+        stmts: list[ast.stmt] = [init_stmt] + body
+
+        # Now run the generated code through the normal transformer, and return the result
+        return self._visit_list_of_stmts(stmts), ast.Name(id=result_name, ctx=ast.Load())
+        
     def visit_DictComp(self, node: ast.DictComp) -> Any:
         """Transform dict comprehension to explicit loop."""
         # TODO: Similar to ListComp
