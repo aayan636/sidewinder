@@ -542,35 +542,35 @@ class SidewinderTransformer(
     
     def visit_Dict(self, node: ast.Dict) -> Any:
         """Transform dictionary literal."""
-        node.keys = [self.visit(k) if k else None for k in node.keys]
-        node.values = [self.visit(v) for v in node.values]
+        assert (k is not None for k in node.keys), "Unpacking dict is not supported yet"
+        node.keys = [self._visit_expr(k) if k else None for k in node.keys]
+        node.values = [self._visit_expr(v) for v in node.values]
         return node
     
     def visit_Set(self, node: ast.Set) -> Any:
         """Transform set literal."""
-        node.elts = [self.visit(elt) for elt in node.elts]
+        node.elts = [self._visit_expr(elt) for elt in node.elts]
         return node
     
     def visit_List(self, node: ast.List) -> Any:
         """Transform list literal."""
-        node.elts = [self.visit(elt) for elt in node.elts]
+        node.elts = [self._visit_expr(elt) for elt in node.elts]
         return node
     
     def visit_Tuple(self, node: ast.Tuple) -> Any:
         """Transform tuple literal."""
-        node.elts = [self.visit(elt) for elt in node.elts]
+        node.elts = [self._visit_expr(elt) for elt in node.elts]
         return node
     
     def visit_Await(self, node: ast.Await) -> Any:
         """Transform await expression."""
-        node.value = self.visit(node.value)
-        return node
+        raise NotImplementedError("Generators are not supported yet")
     
     def visit_FormattedValue(self, node: ast.FormattedValue) -> Any:
         """Transform formatted value in f-string."""
-        node.value = self.visit(node.value)
+        node.value = self._visit_expr(node.value)
         if node.format_spec:
-            node.format_spec = self.visit(node.format_spec)
+            node.format_spec = self._visit_expr(node.format_spec)
         return node
     
     def visit_JoinedStr(self, node: ast.JoinedStr) -> Any:
@@ -580,7 +580,7 @@ class SidewinderTransformer(
     
     def visit_Starred(self, node: ast.Starred) -> Any:
         """Transform starred expression."""
-        node.value = self.visit(node.value)
+        node.value = self._visit_expr(node.value)
         return node
     
     def visit_Name(self, node: ast.Name) -> Any:
@@ -593,9 +593,7 @@ class SidewinderTransformer(
     
     def visit_NamedExpr(self, node: ast.NamedExpr) -> Any:
         """Transform named expression (walrus operator)."""
-        node.target = self.visit(node.target)
-        node.value = self.visit(node.value)
-        return node
+        raise NotImplementedError("NamedExpr := not implemented yet.")
     
     # ========== Pattern Matching Nodes ==========
     
@@ -653,10 +651,7 @@ class SidewinderTransformer(
     
     def visit_comprehension(self, node: ast.comprehension) -> Any:
         """Transform comprehension clause."""
-        node.target = self.visit(node.target)
-        node.iter = self.visit(node.iter)
-        node.ifs = [self.visit(cond) for cond in node.ifs]
-        return node
+        raise SidewinderIllegalStateError("Did not expect to visit comprehension node")
     
     def visit_arguments(self, node: ast.arguments) -> Any:
         """Transform function arguments."""
@@ -666,12 +661,12 @@ class SidewinderTransformer(
     def visit_arg(self, node: ast.arg) -> Any:
         """Transform function argument."""
         if node.annotation:
-            node.annotation = self.visit(node.annotation)
+            node.annotation = self._visit_expr(node.annotation)
         return node
     
     def visit_keyword(self, node: ast.keyword) -> Any:
         """Transform keyword argument."""
-        node.value = self.visit(node.value)
+        node.value = self._visit_expr(node.value)
         return node
     
     def visit_alias(self, node: ast.alias) -> Any:
@@ -680,11 +675,7 @@ class SidewinderTransformer(
     
     def visit_withitem(self, node: ast.withitem) -> Any:
         """Transform with item."""
-        node.context_expr = self.visit(node.context_expr)
-        if node.optional_vars:
-            node.optional_vars = self.visit(node.optional_vars)
-        return node
-
+        raise SidewinderIllegalStateError("Did not expect to visit withitem node")
 
 def transform_code(source_code: str) -> str:
     """
