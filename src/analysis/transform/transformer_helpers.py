@@ -3,9 +3,9 @@ from typing import Dict, List, Any, Optional, Set, Union, overload, TypeVar
 from collections import defaultdict
 import copy
 
-from analysis.ast.transformer_base import SidewinderTransformerBase, T
-from analysis.ast.transformer_context import TransformerContext
-from analysis.ast.errors import SidewinderIllegalStateError
+from analysis.transform.transformer_base import SidewinderTransformerBase, T
+from analysis.transform.transformer_context import TransformerContext
+from analysis.transform.errors import SidewinderIllegalStateError
 from analysis.symbolic.hook import SidewinderHookNames
 
 

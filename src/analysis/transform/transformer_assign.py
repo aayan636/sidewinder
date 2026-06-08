@@ -1,7 +1,7 @@
 import ast
 import copy 
 
-from analysis.ast.transformer_helpers import SidewinderTransformerHelpers
+from analysis.transform.transformer_helpers import SidewinderTransformerHelpers
 
 
 class SidewinderAssignTransformerMixin(SidewinderTransformerHelpers):

@@ -1,6 +1,6 @@
 import ast
 
-from analysis.ast.transformer_helpers import SidewinderTransformerHelpers
+from analysis.transform.transformer_helpers import SidewinderTransformerHelpers
 
 class SidewinderForTransformerMixin(SidewinderTransformerHelpers):
     def visit_For(self, node: ast.For) -> list[ast.stmt]:

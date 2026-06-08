@@ -1,7 +1,7 @@
 import ast
 from typing import Any, Union
 
-from analysis.ast.transformer_helpers import SidewinderTransformerHelpers
+from analysis.transform.transformer_helpers import SidewinderTransformerHelpers
 
 class SidewinderFunctionTransformerMixin(SidewinderTransformerHelpers):
     # ========== Function (sync and async) Def Nodes ==========

@@ -1,7 +1,7 @@
 import ast
 from typing import TypeVar, TypeAlias, overload, Union, Any
 
-from analysis.ast.transformer_context import TransformerContext
+from analysis.transform.transformer_context import TransformerContext
 
 T = TypeVar('T', bound=ast.expr)
 

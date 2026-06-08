@@ -4,8 +4,8 @@ Python Code Analysis Package
 This package provides comprehensive Python code analysis capabilities.
 """
 
-from .analyzer import PythonCodeAnalyzer
-from .ast.transformer import SidewinderPythonASTTransformer
+from analysis.analyzer import PythonCodeAnalyzer
+from analysis.transform.transformer import SidewinderTransformer
 
-__all__ = ['PythonCodeAnalyzer', 'SidewinderPythonASTTransformer']
+__all__ = ['PythonCodeAnalyzer', 'SidewinderTransformer']
 __version__ = '1.0.0' 

@@ -1,7 +1,7 @@
 import ast
 from typing import Any
 
-from analysis.ast.transformer_helpers import SidewinderTransformerHelpers
+from analysis.transform.transformer_helpers import SidewinderTransformerHelpers
 
 class SidewinderClassTransformerMixin(SidewinderTransformerHelpers):
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:

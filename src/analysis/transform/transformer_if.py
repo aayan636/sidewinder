@@ -1,6 +1,6 @@
 import ast
 
-from analysis.ast.transformer_helpers import SidewinderTransformerHelpers
+from analysis.transform.transformer_helpers import SidewinderTransformerHelpers
 from analysis.symbolic.hook import SidewinderHookNames
 
 class SidewinderIfTransformerMixin(SidewinderTransformerHelpers):

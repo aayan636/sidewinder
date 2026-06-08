@@ -1,7 +1,7 @@
 import ast
 
-from analysis.ast.transformer_helpers import SidewinderTransformerHelpers
-from analysis.ast.errors import SidewinderIllegalStateError
+from analysis.transform.transformer_helpers import SidewinderTransformerHelpers
+from analysis.transform.errors import SidewinderIllegalStateError
 from analysis.symbolic.hook import SidewinderHookNames
 
 from typing import Any

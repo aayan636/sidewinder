@@ -1,4 +1,4 @@
-from symbolic.hook.sidewinder_hook import SidewinderHook, SidewinderHookNames
+from analysis.symbolic.hook.sidewinder_hook import SidewinderHook, SidewinderHookNames
 
 from typing import Dict
 

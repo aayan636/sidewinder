@@ -11,21 +11,21 @@ This module transforms Python code for symbolic execution by:
 import ast
 from typing import Dict, List, Any, Union, overload
 
-from analysis.ast.errors import SidewinderIllegalStateError
-from analysis.ast.transformer_assign import SidewinderAssignTransformerMixin
-from analysis.ast.transformer_base import SidewinderTransformerBase, T
-from analysis.ast.transformer_classes import SidewinderClassTransformerMixin
-from analysis.ast.transformer_context import TransformerContext
-from analysis.ast.transformer_control_flow_breaker import SidewinderControlFlowBreakerTransformerMixin
-from analysis.ast.transformer_expr import SidewinderExprTransformerMixin
-from analysis.ast.transformer_for import SidewinderForTransformerMixin
-from analysis.ast.transformer_functions import SidewinderFunctionTransformerMixin
-from analysis.ast.transformer_helpers import SidewinderTransformerHelpers
-from analysis.ast.transformer_if import SidewinderIfTransformerMixin
-from analysis.ast.transformer_modules import SidewinderModuleTransformerMixin
-from analysis.ast.transformer_try import SidewinderTryTransformerMixin
-from analysis.ast.transformer_while import SidewinderWhileTransformerMixin
-from analysis.ast.transformer_with import SidewinderWithTransformerMixin
+from analysis.transform.errors import SidewinderIllegalStateError
+from analysis.transform.transformer_assign import SidewinderAssignTransformerMixin
+from analysis.transform.transformer_base import SidewinderTransformerBase, T
+from analysis.transform.transformer_classes import SidewinderClassTransformerMixin
+from analysis.transform.transformer_context import TransformerContext
+from analysis.transform.transformer_control_flow_breaker import SidewinderControlFlowBreakerTransformerMixin
+from analysis.transform.transformer_expr import SidewinderExprTransformerMixin
+from analysis.transform.transformer_for import SidewinderForTransformerMixin
+from analysis.transform.transformer_functions import SidewinderFunctionTransformerMixin
+from analysis.transform.transformer_helpers import SidewinderTransformerHelpers
+from analysis.transform.transformer_if import SidewinderIfTransformerMixin
+from analysis.transform.transformer_modules import SidewinderModuleTransformerMixin
+from analysis.transform.transformer_try import SidewinderTryTransformerMixin
+from analysis.transform.transformer_while import SidewinderWhileTransformerMixin
+from analysis.transform.transformer_with import SidewinderWithTransformerMixin
 from analysis.symbolic.hook import SidewinderHookNames
 
 
@@ -147,9 +147,6 @@ class SidewinderTransformer(
     def visit_TypeAlias(self, node: ast.TypeAlias) -> Any:
         """Transform type alias statement."""
         raise NotImplementedError("Type alias statements are not supported yet")
-    
-    # ========== Expression Nodes ==========
-    
     
     # ========== Pattern Matching Nodes ==========
     
@@ -277,6 +274,6 @@ def foo(x, *k, **y):
     print("\n=== Transformed Code ===")
     transformed_code = transform_code(test_code)
     print(transformed_code)
-    exec(transformed_code)
+    # exec(transformed_code)
 
        
