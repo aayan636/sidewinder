@@ -9,10 +9,9 @@ This module transforms Python code for symbolic execution by:
 """
 
 import ast
-from typing import Dict, List, Any, Optional, Set, Union, overload, TypeVar
-from collections import defaultdict
-import copy
+from typing import Dict, List, Any, Union, overload
 
+from analysis.ast.errors import SidewinderIllegalStateError
 from analysis.ast.transformer_assign import SidewinderAssignTransformerMixin
 from analysis.ast.transformer_base import SidewinderTransformerBase, T
 from analysis.ast.transformer_classes import SidewinderClassTransformerMixin
@@ -25,6 +24,7 @@ from analysis.ast.transformer_if import SidewinderIfTransformerMixin
 from analysis.ast.transformer_modules import SidewinderModuleTransformerMixin
 from analysis.ast.transformer_try import SidewinderTryTransformerMixin
 from analysis.ast.transformer_while import SidewinderWhileTransformerMixin
+from analysis.ast.transformer_with import SidewinderWithTransformerMixin
 from analysis.symbolic.hook import SidewinderHookNames
 
 
@@ -32,6 +32,7 @@ from analysis.symbolic.hook import SidewinderHookNames
 # source code into a different program.
 # This transformer reduces all operations into a function call and assignments.
 class SidewinderTransformer(
+        SidewinderWithTransformerMixin,
         SidewinderTryTransformerMixin,
         SidewinderForTransformerMixin,
         SidewinderWhileTransformerMixin,
@@ -69,19 +70,7 @@ class SidewinderTransformer(
 
         # Current node where we append extra computation required
         self.current_context = TransformerContext()
-        
-
-    # ========== Overloads for type hinting =============
-
-    @overload
-    def visit(self, node: ast.stmt) -> Union[ast.stmt, List[ast.stmt]]: ...
-
-    @overload
-    def visit(self, node: T) -> tuple[List[ast.stmt], T]: ...
-
-    def visit(self, node: ast.AST) -> Any:
-        return super().visit(node)
-    
+            
     
     def visit_Delete(self, node: ast.Delete) -> Any:
         """Transform del statement."""
@@ -151,26 +140,19 @@ class SidewinderTransformer(
     
     def visit_Match(self, node: ast.Match) -> Any:
         """Transform match statement."""
-        # TODO: Match statements need complex desugaring
-        node.subject = self.visit(node.subject)
-        node.cases = [self.visit(case) for case in node.cases]
-        return node
+        raise NotImplementedError("Match statements are not supported yet.")
     
     def visit_TypeAlias(self, node: ast.TypeAlias) -> Any:
         """Transform type alias statement."""
-        node.name = self.visit(node.name)
-        node.value = self.visit(node.value)
-        if node.type_params:
-            node.type_params = [self.visit(tp) for tp in node.type_params]
-        return node
+        raise NotImplementedError("Type alias statements are not supported yet")
     
     # ========== Expression Nodes ==========
     
-    def visit_BinOp(self, node: ast.BinOp) -> Any:
+    def visit_BinOp(self, node: ast.BinOp) -> tuple[list[ast.stmt], ast.expr]:
         """
         Transform binary operation to method call.
         
-        a + b -> a.__sidewinder_add__(b, __sidewinder_state)
+        a + b -> a.__add__(b, __sidewinder_state)
         """
         op_map = {
             ast.Add: 'add',
@@ -191,21 +173,21 @@ class SidewinderTransformer(
         op_name = op_map.get(type(node.op))
         if not op_name:
             # Fallback
-            return node
+            return [], node
         
-        method_name = f'__sidewinder_{op_name}__'
+        method_name = f'__{op_name}__'
         
-        return ast.Call(
+        return [], ast.Call(
             func=ast.Attribute(
-                value=self.visit(node.left),
+                value=self._visit_expr(node.left),
                 attr=method_name,
                 ctx=ast.Load()
             ),
-            args=[self.visit(node.right), ast.Name(id='__sidewinder_state', ctx=ast.Load())],
+            args=[self._visit_expr(node.right), ast.Name(id='__sidewinder_state', ctx=ast.Load())],
             keywords=[]
         )
     
-    def visit_UnaryOp(self, node: ast.UnaryOp) -> Any:
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> tuple[list[ast.stmt], ast.expr]:
         """
         Transform unary operation to method call.
         
@@ -220,19 +202,19 @@ class SidewinderTransformer(
         
         op_name = op_map.get(type(node.op))
         if not op_name:
-            return node
+            return [], node
         
         # Special case for 'not' - it's not a dunder method
         if op_name == 'not':
             # TODO: 'not x' should become something like: not x.__sidewinder_bool__(__sidewinder_state)
             # For now, just transform the operand
-            return ast.UnaryOp(op=node.op, operand=self.visit(node.operand))
+            return [], ast.UnaryOp(op=node.op, operand=self._visit_expr(node.operand))
         
         method_name = f'__sidewinder_{op_name}__'
         
-        return ast.Call(
+        return [], ast.Call(
             func=ast.Attribute(
-                value=self.visit(node.operand),
+                value=self._visit_expr(node.operand),
                 attr=method_name,
                 ctx=ast.Load()
             ),
@@ -240,19 +222,16 @@ class SidewinderTransformer(
             keywords=[]
         )
     
-    def visit_BoolOp(self, node: ast.BoolOp) -> Any:
+    def visit_BoolOp(self, node: ast.BoolOp) -> tuple[list[ast.stmt], ast.expr]:
         """
         Transform boolean operation.
         
         a and b -> short-circuit evaluation with __sidewinder_bool__
         a or b -> short-circuit evaluation with __sidewinder_bool__
         """
-        # TODO: and/or need special handling for short-circuit semantics
-        # For now, just transform the operands
-        node.values = [self.visit(val) for val in node.values]
-        return node
+        raise NotImplementedError("Bool Op not yet supported")
     
-    def visit_Compare(self, node: ast.Compare) -> Any:
+    def visit_Compare(self, node: ast.Compare) -> tuple[list[ast.stmt], ast.expr]:
         """
         Transform comparison operation.
         
@@ -277,125 +256,134 @@ class SidewinderTransformer(
         if len(node.ops) == 1 and len(node.comparators) == 1:
             op = node.ops[0]
             op_name = op_map.get(type(op))
+            comparator = node.comparators[0]
             
             if op_name in ['is', 'is_not']:
                 # 'is' and 'is not' are identity checks, not method calls
                 # Transform operands but keep the operator
-                node.left = self.visit(node.left)
-                node.comparators = [self.visit(comp) for comp in node.comparators]
-                return node
+                node.left = self._visit_expr(node.left)
+                node.comparators = [self._visit_expr(comparator)]
+                return [], node
             
             if op_name in ['contains', 'not_contains']:
                 # 'in' is reversed: a in b -> b.__contains__(a)
-                method_name = '__sidewinder_contains__'
+                method_name = "__contains__"
                 result = ast.Call(
                     func=ast.Attribute(
-                        value=self.visit(node.comparators[0]),
+                        value=self._visit_expr(comparator),
                         attr=method_name,
                         ctx=ast.Load()
                     ),
-                    args=[self.visit(node.left), ast.Name(id='__sidewinder_state', ctx=ast.Load())],
-                    keywords=[]
+                    args=[self._visit_expr(node.left)],
+                    keywords=[self._sidewinder_state_keyword()],
                 )
                 
                 if op_name == 'not_contains':
                     # Negate the result
-                    # TODO: Should this be __sidewinder_not__ or Python's 'not'?
                     result = ast.UnaryOp(op=ast.Not(), operand=result)
                 
-                return result
+                return [], result
             
             if op_name:
-                method_name = f'__sidewinder_{op_name}__'
-                return ast.Call(
+                method_name = f'__{op_name}__'
+                return [], ast.Call(
                     func=ast.Attribute(
-                        value=self.visit(node.left),
+                        value=self._visit_expr(node.left),
                         attr=method_name,
                         ctx=ast.Load()
                     ),
-                    args=[self.visit(node.comparators[0]), ast.Name(id='__sidewinder_state', ctx=ast.Load())],
-                    keywords=[]
+                    args=[self._visit_expr(comparator)],
+                    keywords=[self._sidewinder_state_keyword()],
                 )
+            else:
+                raise SidewinderIllegalStateError("Expected an operator")
+        else:
+            raise NotImplementedError("Chained Operators are not yet supported")
         
         # Multiple comparisons - transform each operand
         node.left = self.visit(node.left)
         node.comparators = [self.visit(comp) for comp in node.comparators]
         return node
     
-    def visit_Call(self, node: ast.Call) -> Any:
+    def visit_Call(self, node: ast.Call) -> tuple[list[ast.stmt], ast.expr]:
         """
         Transform function call to include __sidewinder_state.
         
-        func(a, b) -> func(a, b, __sidewinder_state)
-        func(a, x=b) -> func(a, __sidewinder_state, x=b) [if func has **kwargs]
+        func(a, b) -> func(a, b, __sidewinder_state=__sidewinder_state)
+        func(a, x=b) -> func(a, __sidewinder_state=__sidewinder_state, x=b) [if func has **kwargs]
         """
         # Transform the function expression
-        node.func = self.visit(node.func)
+        
+        transformed_func = self._visit_expr(node.func)
         
         # Transform arguments
-        node.args = [self.visit(arg) for arg in node.args]
-        node.keywords = [self.visit(kw) for kw in node.keywords]
+        transformed_args = [self._visit_expr(arg) for arg in node.args]
+        transformed_keywords = [ast.keyword(kw.arg, self._visit_expr(kw.value)) for kw in node.keywords]
+
+        transformed_keywords.insert(0, self._sidewinder_state_keyword())
         
-        # Check if this call has keyword arguments
-        has_call_kwargs = len(node.keywords) > 0
-        
-        # Inject __sidewinder_state
-        # TODO: We need to know if the target function has **kwargs to place state correctly
-        # For now, assume no **kwargs and add state as last positional arg
-        state_arg = ast.Name(id='__sidewinder_state', ctx=ast.Load())
-        
-        if has_call_kwargs:
-            # If call has keyword args, add state before them
-            # This might not always be correct - we'd need signature info
-            node.args.append(state_arg)
-        else:
-            # No keyword args, add state as last positional
-            node.args.append(state_arg)
-        
-        return node
-    
-    def visit_Attribute(self, node: ast.Attribute) -> Any:
-        """
-        Transform attribute access to method call.
-        
-        a.b -> a.__sidewinder_getattribute__("b", __sidewinder_state)
-        
-        For chained access a.b.c, this recursively becomes:
-        __t1 = a.__sidewinder_getattribute__("b", __sidewinder_state)
-        __t2 = __t1.__sidewinder_getattribute__("c", __sidewinder_state)
-        """
-        # TODO: Attribute access returns expression, but we need statements for temps
-        # This might need to be handled at a higher level (statement context)
-        
-        # For now, just do inline transformation
-        return ast.Call(
-            func=ast.Attribute(
-                value=self.visit(node.value),
-                attr='__sidewinder_getattribute__',
-                ctx=ast.Load()
-            ),
-            args=[
-                ast.Constant(value=node.attr),
-                ast.Name(id='__sidewinder_state', ctx=ast.Load())
-            ],
-            keywords=[]
+        return [], ast.Call(
+            func=transformed_func,
+            args=transformed_args,
+            keywords=transformed_keywords,
+            lineno=node.lineno,
+            col_offset=node.col_offset,
+            end_lineno=node.end_lineno,
+            end_col_offset=node.end_col_offset
         )
     
-    def visit_Subscript(self, node: ast.Subscript) -> Any:
+    def visit_Attribute(self, node: ast.Attribute) -> tuple[List[ast.stmt], ast.expr]:
+        """
+        Transform attribute access to sidewinder getattr hook.
+        
+        a.b -> 
+        __t1 = a.__sidewinder_getattr__("b", __sidewinder_state__=__sidewinder_state__)
+        
+        For chained access a.b.c, recursion handles it:
+        __t1 = a.__sidewinder_getattr__("b", __sidewinder_state__=__sidewinder_state__)
+        __t2 = __t1.__sidewinder_getattr__("c", __sidewinder_state__=__sidewinder_state__)
+        """
+        # recursively transform the object being accessed
+        visited_obj = self._visit_expr(node.value)
+
+        # store result in temp
+        temp = self._fresh_temp("__sidewinder_attr")
+        stmt = ast.Assign(
+            targets=[ast.Name(id=temp, ctx=ast.Store())],
+            value=self._emit_method_hook_call(
+                visited_obj,
+                SidewinderHookNames.SIDEWINDER_GETATTR,
+                ast.Constant(value=node.attr),
+            ),
+            lineno=0, col_offset=0,
+        )
+
+        return [stmt], ast.Name(id=temp, ctx=ast.Load())
+    
+    def visit_Subscript(self, node: ast.Subscript) -> tuple[list[ast.stmt], ast.expr]:
         """
         Transform subscript operation.
-        
-        a[b] -> a.__sidewinder_getitem__(b, __sidewinder_state)
+
+        a[b] ->
+        __t1 = a.__sidewinder_getitem__(b,__sidewinder_state__=__sidewinder_state__)
         """
-        return ast.Call(
-            func=ast.Attribute(
-                value=self.visit(node.value),
-                attr='__sidewinder_getitem__',
-                ctx=ast.Load()
+        visited_obj = self._visit_expr(node.value)
+        visited_slice = self._visit_expr(node.slice)
+
+        temp = self._fresh_temp("__sidewinder_subscript")
+
+        stmt = ast.Assign(
+            targets=[ast.Name(id=temp, ctx=ast.Store())],
+            value=self._emit_method_hook_call(
+                visited_obj,
+                SidewinderHookNames.SIDEWINDER_GETITEM,
+                visited_slice,
             ),
-            args=[self.visit(node.slice), ast.Name(id='__sidewinder_state', ctx=ast.Load())],
-            keywords=[]
+            lineno=0,
+            col_offset=0,
         )
+
+        return [stmt], ast.Name(id=temp, ctx=ast.Load())
     
     def visit_Slice(self, node: ast.Slice) -> Any:
         """Transform slice - convert to slice object."""
@@ -403,9 +391,9 @@ class SidewinderTransformer(
         return ast.Call(
             func=ast.Name(id='slice', ctx=ast.Load()),
             args=[
-                self.visit(node.lower) if node.lower else ast.Constant(value=None),
-                self.visit(node.upper) if node.upper else ast.Constant(value=None),
-                self.visit(node.step) if node.step else ast.Constant(value=None),
+                self._visit_expr(node.lower) if node.lower else ast.Constant(value=None),
+                self._visit_expr(node.upper) if node.upper else ast.Constant(value=None),
+                self._visit_expr(node.step) if node.step else ast.Constant(value=None),
             ],
             keywords=[]
         )
@@ -462,15 +450,27 @@ class SidewinderTransformer(
             node.args.args.append(state_param)
         
         # Transform body
-        node.body = self.visit(node.body)
+        node.body = self._visit_expr(node.body)
         
         return node
     
     def visit_IfExp(self, node: ast.IfExp) -> Any:
         """Transform conditional expression (ternary operator)."""
-        node.test = self.visit(node.test)
-        node.body = self.visit(node.body)
-        node.orelse = self.visit(node.orelse)
+        
+        transformed_test = self._visit_expr(node.test)
+
+        ast.Expr(
+            value=self._emit_hook_call(
+                SidewinderHookNames.SIDEWINDER_CONDITION_TRUE,
+                transformed_test
+            ),
+            lineno=0, col_offset=0
+        )
+
+
+        transformed_body = self._visit_expr(node.body)
+        transformed_orelse = self._visit_expr(node.orelse)
+
         return node
     
     def visit_Dict(self, node: ast.Dict) -> Any:
@@ -508,7 +508,7 @@ class SidewinderTransformer(
     
     def visit_JoinedStr(self, node: ast.JoinedStr) -> Any:
         """Transform f-string."""
-        node.values = [self.visit(val) for val in node.values]
+        node.values = [self._visit_expr(val) for val in node.values]
         return node
     
     def visit_Starred(self, node: ast.Starred) -> Any:
@@ -534,72 +534,53 @@ class SidewinderTransformer(
     
     def visit_match_case(self, node: ast.match_case) -> Any:
         """Transform match case."""
-        node.pattern = self.visit(node.pattern)
-        if node.guard:
-            node.guard = self.visit(node.guard)
-        node.body = [self.visit(stmt) for stmt in node.body]
-        return node
+        raise NotImplementedError("Match statements are not supported yet.")
     
     def visit_MatchValue(self, node: ast.MatchValue) -> Any:
         """Transform match value pattern."""
-        node.value = self.visit(node.value)
-        return node
+        raise NotImplementedError("Match statements are not supported yet.")
     
     def visit_MatchSingleton(self, node: ast.MatchSingleton) -> Any:
         """Match singleton pattern is unchanged."""
-        return node
+        raise NotImplementedError("Match statements are not supported yet.")
     
     def visit_MatchSequence(self, node: ast.MatchSequence) -> Any:
         """Transform match sequence pattern."""
-        node.patterns = [self.visit(p) for p in node.patterns]
-        return node
+        raise NotImplementedError("Match statements are not supported yet.")
     
     def visit_MatchMapping(self, node: ast.MatchMapping) -> Any:
         """Transform match mapping pattern."""
-        node.keys = [self.visit(k) for k in node.keys]
-        node.patterns = [self.visit(p) for p in node.patterns]
-        if node.rest:
-            # rest is just a name, doesn't need visiting
-            pass
-        return node
+        raise NotImplementedError("Match statements are not supported yet.")
     
     def visit_MatchClass(self, node: ast.MatchClass) -> Any:
         """Transform match class pattern."""
-        node.cls = self.visit(node.cls)
-        node.patterns = [self.visit(p) for p in node.patterns]
-        # kwd_patterns are just names
-        return node
+        raise NotImplementedError("Match statements are not supported yet.")
     
     def visit_MatchStar(self, node: ast.MatchStar) -> Any:
         """Match star pattern is unchanged."""
-        return node
+        raise NotImplementedError("Match statements are not supported yet.")
     
     def visit_MatchAs(self, node: ast.MatchAs) -> Any:
         """Transform match as pattern."""
-        if node.pattern:
-            node.pattern = self.visit(node.pattern)
-        return node
+        raise NotImplementedError("Match statements are not supported yet.")
     
     def visit_MatchOr(self, node: ast.MatchOr) -> Any:
         """Transform match or pattern."""
-        node.patterns = [self.visit(p) for p in node.patterns]
-        return node
+        raise NotImplementedError("Match statements are not supported yet.")
     
     # ========== Type Parameter Nodes ==========
     
     def visit_TypeVar(self, node: ast.TypeVar) -> Any:
         """Transform type variable."""
-        if node.bound:
-            node.bound = self.visit(node.bound)
-        return node
+        raise NotImplementedError("TypeVar nodes are not supported yet")
     
     def visit_ParamSpec(self, node: ast.ParamSpec) -> Any:
         """Transform parameter specification."""
-        return node
+        raise NotImplementedError("ParamSpec nodes are not supported yet")
     
     def visit_TypeVarTuple(self, node: ast.TypeVarTuple) -> Any:
         """Transform type variable tuple."""
-        return node
+        raise NotImplementedError("TypeVar nodes are not supported yet")
     
     # ========== Helper/Supporting Nodes ==========
     

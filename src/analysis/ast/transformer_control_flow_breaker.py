@@ -69,11 +69,8 @@ class SidewinderControlFlowBreakerTransformerMixin(SidewinderTransformerHelpers)
 
     def visit_Yield(self, node: ast.Yield) -> Any:
         """Transform yield expression."""
-        if node.value:
-            node.value = self.visit(node.value)
-        return node
+        raise NotImplementedError("Yield is not yet supported")
     
     def visit_YieldFrom(self, node: ast.YieldFrom) -> Any:
         """Transform yield from expression."""
-        node.value = self.visit(node.value)
-        return node
+        raise NotImplementedError("Yield from is not yet supported")

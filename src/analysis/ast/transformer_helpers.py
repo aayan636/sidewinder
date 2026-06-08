@@ -45,7 +45,31 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
             args=list(args),
             keywords=keywords,
         )
-    
+
+    def _emit_method_hook_call(
+        self,
+        obj: ast.expr,
+        hook: SidewinderHookNames,
+        *args: ast.expr,
+        extra_kwargs: Optional[Dict[str, ast.expr]] = None
+    ) -> ast.Call:
+        """Create a sidewinder hook call as a method on an object.
+        
+        obj.__sidewinder_hook__(*args, __sidewinder_state__=__sidewinder_state__)
+        """
+        keywords = [
+            ast.keyword(arg=k, value=v) for k, v in (extra_kwargs or {}).items()
+        ] + [self._sidewinder_state_keyword()]
+        return ast.Call(
+            func=ast.Attribute(
+                value=obj,
+                attr=f"__{hook.name.lower()}__",
+                ctx=ast.Load()
+            ),
+            args=list(args),
+            keywords=keywords,
+        )
+
     def _visit_list_of_stmts(self, stmts: List[ast.stmt]) -> List[ast.stmt]:
         """
         Visit a list of statements, handling list expansion and preamble injection.
@@ -60,7 +84,7 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
                 result.append(visited)
         return result
     
-    def _visit_expr(self, expr: T) -> T:
+    def _visit_expr(self, expr: T) -> ast.expr:
         generated_stmts, final_expr = self.visit(expr)
         for stmt in generated_stmts:
             self.current_context.append_stmt(stmt)

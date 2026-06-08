@@ -1,7 +1,9 @@
 import ast
-from typing import TypeVar, TypeAlias
+from typing import TypeVar, TypeAlias, overload, Union, Any
 
 from analysis.ast.transformer_context import TransformerContext
+
+T = TypeVar('T', bound=ast.expr)
 
 class SidewinderTransformerBase(ast.NodeTransformer):
     def generic_visit(self, node: ast.AST) -> None:
@@ -20,4 +22,15 @@ class SidewinderTransformerBase(ast.NodeTransformer):
         # Current node where we append extra computation required
         self.current_context = TransformerContext()
 
-T = TypeVar('T', bound=ast.expr)
+    @overload
+    def visit(self, node: ast.stmt) -> Union[ast.stmt, list[ast.stmt]]: ...
+
+    @overload
+    def visit(self, node: T) -> tuple[list[ast.stmt], ast.expr]: ...
+
+    @overload
+    def visit(self, node: ast.AST) -> ast.AST: ...
+
+    def visit(self, node: ast.AST) -> Any:
+        return super().visit(node)
+
