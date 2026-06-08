@@ -470,21 +470,15 @@ class SidewinderTransformer(
         
     def visit_DictComp(self, node: ast.DictComp) -> Any:
         """Transform dict comprehension to explicit loop."""
-        # TODO: Similar to ListComp
-        self.generic_visit(node)
-        return node
+        raise NotImplementedError("DictComp not supported yet.")
     
     def visit_SetComp(self, node: ast.SetComp) -> Any:
         """Transform set comprehension to explicit loop."""
-        # TODO: Similar to ListComp
-        self.generic_visit(node)
-        return node
+        raise NotImplementedError("SetComp not supported yet.")
     
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> Any:
         """Transform generator expression to generator function."""
-        # TODO: Convert to explicit generator function
-        self.generic_visit(node)
-        return node
+        raise NotImplementedError("GeneratorExp not supported yet.")
     
     def visit_Lambda(self, node: ast.Lambda) -> Any:
         """
@@ -509,24 +503,42 @@ class SidewinderTransformer(
         
         return node
     
-    def visit_IfExp(self, node: ast.IfExp) -> Any:
-        """Transform conditional expression (ternary operator)."""
-        
-        transformed_test = self._visit_expr(node.test)
+    def visit_IfExp(self, node: ast.IfExp) -> tuple[list[ast.stmt], ast.expr]:
+        result = self._fresh_temp("__sidewinder_ifexp")
 
-        ast.Expr(
-            value=self._emit_hook_call(
-                SidewinderHookNames.SIDEWINDER_CONDITION_TRUE,
-                transformed_test
-            ),
-            lineno=0, col_offset=0
+        init = ast.Assign(
+            targets=[ast.Name(id=result, ctx=ast.Store())],
+            value=ast.Constant(value=None),
+            lineno=0,
+            col_offset=0,
         )
 
+        assign_body = ast.Assign(
+            targets=[ast.Name(id=result, ctx=ast.Store())],
+            value=node.body,
+            lineno=0,
+            col_offset=0,
+        )
 
-        transformed_body = self._visit_expr(node.body)
-        transformed_orelse = self._visit_expr(node.orelse)
+        assign_orelse = ast.Assign(
+            targets=[ast.Name(id=result, ctx=ast.Store())],
+            value=node.orelse,
+            lineno=0,
+            col_offset=0,
+        )
 
-        return node
+        if_stmt = ast.If(
+            test=node.test,
+            body=[assign_body],
+            orelse=[assign_orelse],
+            lineno=0,
+            col_offset=0,
+        )
+
+        stmts = [init, if_stmt]
+
+        # Process the simplified expression through transformer
+        return self._visit_list_of_stmts(stmts), ast.Name(id=result, ctx=ast.Load())
     
     def visit_Dict(self, node: ast.Dict) -> Any:
         """Transform dictionary literal."""
