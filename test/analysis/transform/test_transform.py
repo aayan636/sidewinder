@@ -4,7 +4,7 @@ import difflib
 import pytest
 import warnings
 from pathlib import Path
-from analysis.transform.transformer import SidewinderTransformer  # adjust import path
+from sidewinder.analysis.transform.transformer import SidewinderTransformer  # adjust import path
 
 INPUTS_DIR = Path(__file__).parent / "inputs"
 OUTPUTS_DIR = Path(__file__).parent / "outputs"
