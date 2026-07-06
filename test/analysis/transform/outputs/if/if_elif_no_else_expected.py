@@ -1,0 +1,12 @@
+from sidewinder.analysis.symbolic.state import SidewinderState
+
+__sidewinder_cond0 = x
+__sidewinder_condition_true__(__sidewinder_cond0, __sidewinder_state=__sidewinder_state)
+y1
+__sidewinder_pop_condition__(__sidewinder_state=__sidewinder_state)
+__sidewinder_condition_false__(__sidewinder_cond0, __sidewinder_state=__sidewinder_state)
+__sidewinder_cond1 = z
+__sidewinder_condition_true__(__sidewinder_cond1, __sidewinder_state=__sidewinder_state)
+y2
+__sidewinder_pop_condition__(__sidewinder_state=__sidewinder_state)
+__sidewinder_pop_condition__(__sidewinder_state=__sidewinder_state)
