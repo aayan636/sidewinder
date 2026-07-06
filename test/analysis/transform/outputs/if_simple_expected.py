@@ -1,3 +1,5 @@
+from sidewinder.analysis.symbolic.state import SidewinderState
+
 __sidewinder_cond0 = x
 __sidewinder_condition_true__(__sidewinder_cond0, __sidewinder_state=__sidewinder_state)
 y = 1

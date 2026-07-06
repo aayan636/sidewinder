@@ -18,12 +18,12 @@ def discover_tests() -> list[tuple[Path, Path]]:
     - expected outputs with no matching input
     """
     input_files = set(INPUTS_DIR.glob("*.py"))
-    output_files = set(OUTPUTS_DIR.glob("*-expected.py"))
+    output_files = set(OUTPUTS_DIR.glob("*_expected.py"))
 
     # map stem -> path for inputs
     input_map = {f.stem: f for f in input_files}
     # map stem (without -expected) -> path for outputs
-    output_map = {f.stem.removesuffix("-expected"): f for f in output_files}
+    output_map = {f.stem.removesuffix("_expected"): f for f in output_files}
 
     # flag unmatched inputs
     for stem, path in input_map.items():
