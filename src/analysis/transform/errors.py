@@ -1,0 +1,2 @@
+class SidewinderIllegalStateError(RuntimeError):
+    pass
