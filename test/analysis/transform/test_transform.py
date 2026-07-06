@@ -17,8 +17,8 @@ def discover_tests() -> list[tuple[Path, Path]]:
     - inputs with no matching expected output
     - expected outputs with no matching input
     """
-    input_files = set(INPUTS_DIR.glob("*.py"))
-    output_files = set(OUTPUTS_DIR.glob("*_expected.py"))
+    input_files = set(INPUTS_DIR.glob("**/*.py"))
+    output_files = set(OUTPUTS_DIR.glob("**/*_expected.py"))
 
     # map stem -> path for inputs
     input_map = {f.stem: f for f in input_files}
@@ -58,8 +58,13 @@ def _diff(expected: ast.AST, actual: ast.AST) -> str:
     )
     return "".join(diff)
 
+test_cases = discover_tests()
 
-@pytest.mark.parametrize("input_file,expected_file", discover_tests())
+@pytest.mark.parametrize(
+        "input_file,expected_file", 
+        test_cases, 
+        ids=[f"{input_file.parent.stem}::{input_file.stem}" for input_file, _ in test_cases]
+)
 def test_transformer(input_file: Path, expected_file: Path) -> None:
     # parse input
     input_tree = _parse_file(input_file)
