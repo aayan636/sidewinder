@@ -90,7 +90,7 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
             self.current_context.append_stmt(stmt)
         return final_expr
     
-    def _visit_target(self, target: ast.expr | ast.Tuple | ast.List, visited_rhs: ast.expr) -> None:
+    def _visit_target(self, target: ast.expr | ast.Tuple | ast.List, visited_rhs: ast.expr) -> List[ast.stmt]:
         """
         Emit statements to assign rhs to target.
         rhs is already a normalized expression (usually a Name node pointing to a tmp).
@@ -104,32 +104,34 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
         match target: 
             case ast.Name():
                 # x = rhs  — base case, plain assignment, no transformation needed
-                self.current_context.append_stmt(ast.Assign(targets=[target], value=visited_rhs, lineno=0, col_offset=0))
+                return [ast.Assign(targets=[target], value=visited_rhs, lineno=0, col_offset=0)]
 
             case ast.Attribute():
                 # y.attr = rhs  →  _visit_expr(y).__setattr__("attr", rhs)
                 obj = self._visit_expr(target.value)
-                self.current_context.append_stmt(
+                return [
                     ast.Expr(value=ast.Call(
                         func=ast.Attribute(value=obj, attr="__sidewinder_setattr__", ctx=ast.Load()),
                         args=[ast.Constant(value = target.attr), visited_rhs],
                         keywords=[],
                     ), lineno=0, col_offset=0)
-                )
+                ]
 
             case ast.Subscript():
                 # y[i] = rhs  →  _visit_expr(y).__setitem__(_visit_expr(i), rhs)
                 obj = self._visit_expr(target.value)
                 idx = self._visit_expr(target.slice)
-                self.current_context.append_stmt(
+                return [
                     ast.Expr(value=ast.Call(
                         func=ast.Attribute(value=obj, attr="__sidewinder_setitem__", ctx=ast.Load()),
                         args=[idx, visited_rhs],
                         keywords=[],
                     ), lineno=0, col_offset=0)
-                )
+                ]
 
             case ast.Tuple() | ast.List():
+                to_return = []
+
                 starred_indices = [i for i, e in enumerate(target.elts)
                                 if isinstance(e, ast.Starred)]
 
@@ -137,7 +139,7 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
                     # simple case: x, y, z = rhs
                     # emit: _iter = visited_rhs.__iter__()
                     iter_tmp = self._fresh_temp()
-                    self.current_context.append_stmt(
+                    to_return.append(
                         ast.Assign(
                             targets=[ast.Name(id=iter_tmp, ctx=ast.Store())],
                             value=ast.Call(
@@ -150,7 +152,7 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
                     for elt in target.elts:
                         # emit: _tmpN = _iter.__next__()
                         next_tmp = self._fresh_temp()
-                        self.current_context.append_stmt(
+                        to_return.append(
                             ast.Assign(
                                 targets=[ast.Name(id=next_tmp, ctx=ast.Store())],
                                 value=ast.Call(
@@ -164,7 +166,9 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
                                 lineno=0, col_offset=0,
                             )
                         )
+                        assert False, "This does not look right, fix when you get to it"
                         self._visit_target(elt, ast.Name(id=next_tmp, ctx=ast.Load()))
+                    return to_return
 
                 elif len(starred_indices) == 1:
                     raise NotImplementedError("starred unpacking in tuple target")

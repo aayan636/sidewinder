@@ -262,8 +262,10 @@ if __name__ == "__main__":
 #     print(i)
 
     test_code = """
-def foo(x, *k, **y):
-    pass
+if x:
+    y = 1
+else:
+    y = 2
 """
 
 # a = [x * 2 for x in range(5)]

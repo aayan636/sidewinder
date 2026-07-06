@@ -246,7 +246,7 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
     def visit_Slice(self, node: ast.Slice) -> Any:
         """Transform slice - convert to slice object."""
         # a[1:5:2] -> slice(1, 5, 2)
-        return ast.Call(
+        return [], ast.Call(
             func=ast.Name(id='slice', ctx=ast.Load()),
             args=[
                 self._visit_expr(node.lower) if node.lower else ast.Constant(value=None),
@@ -359,7 +359,7 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         # Transform body
         node.body = self._visit_expr(node.body)
         
-        return node
+        return [], node
     
     def visit_IfExp(self, node: ast.IfExp) -> tuple[list[ast.stmt], ast.expr]:
         result = self._fresh_temp("__sidewinder_ifexp")
@@ -403,22 +403,22 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         assert (k is not None for k in node.keys), "Unpacking dict is not supported yet"
         node.keys = [self._visit_expr(k) if k else None for k in node.keys]
         node.values = [self._visit_expr(v) for v in node.values]
-        return node
+        return [], node
     
     def visit_Set(self, node: ast.Set) -> Any:
         """Transform set literal."""
         node.elts = [self._visit_expr(elt) for elt in node.elts]
-        return node
+        return [], node
     
     def visit_List(self, node: ast.List) -> Any:
         """Transform list literal."""
         node.elts = [self._visit_expr(elt) for elt in node.elts]
-        return node
+        return [], node
     
     def visit_Tuple(self, node: ast.Tuple) -> Any:
         """Transform tuple literal."""
         node.elts = [self._visit_expr(elt) for elt in node.elts]
-        return node
+        return [], node
     
     def visit_Await(self, node: ast.Await) -> Any:
         """Transform await expression."""
@@ -429,25 +429,25 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         node.value = self._visit_expr(node.value)
         if node.format_spec:
             node.format_spec = self._visit_expr(node.format_spec)
-        return node
+        return [], node
     
     def visit_JoinedStr(self, node: ast.JoinedStr) -> Any:
         """Transform f-string."""
         node.values = [self._visit_expr(val) for val in node.values]
-        return node
+        return [], node
     
     def visit_Starred(self, node: ast.Starred) -> Any:
         """Transform starred expression."""
         node.value = self._visit_expr(node.value)
-        return node
+        return [], node
     
     def visit_Name(self, node: ast.Name) -> Any:
         """Name nodes are unchanged."""
-        return node
+        return [], node
     
     def visit_Constant(self, node: ast.Constant) -> Any:
         """Constant nodes are unchanged."""
-        return node
+        return [], node
     
     def visit_NamedExpr(self, node: ast.NamedExpr) -> Any:
         """Transform named expression (walrus operator)."""

@@ -5,25 +5,26 @@ from analysis.transform.transformer_helpers import SidewinderTransformerHelpers
 
 
 class SidewinderAssignTransformerMixin(SidewinderTransformerHelpers):
-    def visit_Assign(self, node: ast.Assign) -> None:
+    def visit_Assign(self, node: ast.Assign) -> list[ast.stmt]:
         """Transform assignment statement - transform value."""
         transformed_value = self._visit_expr(node.value)
         if len(node.targets) != 1:
             raise NotImplementedError(f"Sidewinder currently only supports a single target for assign statements like {ast.unparse(node)}")
+        to_return = []
         for target in node.targets:
-            self._visit_target(target, transformed_value)
-        return None
+            to_return.extend(self._visit_target(target, transformed_value))
+        return to_return
     
-    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> list[ast.stmt]:
         """Transform annotated assignment statement."""
         # Transform the annotation (it's an expr)
         node.annotation = self._visit_expr(node.annotation)
         # Transform the value if it exists (can be None)
         if node.value is not None:
-            self._visit_target(node.target, self._visit_expr(node.value))
-        return None
+            return self._visit_target(node.target, self._visit_expr(node.value))
+        return []
     
-    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+    def visit_AugAssign(self, node: ast.AugAssign) -> list[ast.stmt]:
         op_map = {
             ast.Add:      'add',
             ast.Sub:      'sub',
@@ -64,11 +65,13 @@ class SidewinderAssignTransformerMixin(SidewinderTransformerHelpers):
         )
 
         tmp = self._fresh_temp()
-        self.current_context.append_stmt(
+        to_return = []
+        to_return.append(
             ast.Assign(
                 targets=[ast.Name(id=tmp, ctx=ast.Store())],
                 value=rhs_value,
                 lineno=0, col_offset=0,
             )
         )
-        self._visit_target(node.target, ast.Name(id=tmp, ctx=ast.Load()))
+        to_return.extend(self._visit_target(node.target, ast.Name(id=tmp, ctx=ast.Load())))
+        return to_return
