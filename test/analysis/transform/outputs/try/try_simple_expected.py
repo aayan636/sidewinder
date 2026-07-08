@@ -1,0 +1,7 @@
+from sidewinder.analysis.symbolic.state import SidewinderState
+x1
+__sidewinder_exc_type0 = ValueError
+__sidewinder_cond1, __sidewinder_discard2 = __sidewinder_exception_condition_and_object__(__sidewinder_exc_type0, already_handled=[], __sidewinder_state=__sidewinder_state)
+__sidewinder_condition_true__(__sidewinder_cond1, __sidewinder_state=__sidewinder_state)
+x2
+__sidewinder_pop_condition__(__sidewinder_state=__sidewinder_state)
