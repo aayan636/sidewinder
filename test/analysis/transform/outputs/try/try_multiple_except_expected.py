@@ -1,0 +1,12 @@
+from sidewinder.analysis.symbolic.state import SidewinderState
+x = 1
+__sidewinder_exc_type0 = ValueError
+__sidewinder_cond1, __sidewinder_discard2 = __sidewinder_exception_condition_and_object__(__sidewinder_exc_type0, already_handled=[], __sidewinder_state=__sidewinder_state)
+__sidewinder_condition_true__(__sidewinder_cond1, __sidewinder_state=__sidewinder_state)
+x = 2
+__sidewinder_pop_condition__(__sidewinder_state=__sidewinder_state)
+__sidewinder_exc_type3 = TypeError
+__sidewinder_cond4, __sidewinder_discard5 = __sidewinder_exception_condition_and_object__(__sidewinder_exc_type3, already_handled=[__sidewinder_cond1], __sidewinder_state=__sidewinder_state)
+__sidewinder_condition_true__(__sidewinder_cond4, __sidewinder_state=__sidewinder_state)
+x = 3
+__sidewinder_pop_condition__(__sidewinder_state=__sidewinder_state)
