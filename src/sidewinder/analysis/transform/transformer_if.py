@@ -9,10 +9,11 @@ class SidewinderIfTransformerMixin(SidewinderTransformerHelpers):
         
         # t = <transformed condition>
         temp = self._fresh_temp("__sidewinder_cond")
-        transformed_test = self._visit_expr(node.test)
+        lowered_transformed_test = self._visit_expr(node.test)
+        result.extend(lowered_transformed_test.stmts)
         result.append(ast.Assign(
             targets=[ast.Name(id=temp, ctx=ast.Store())],
-            value=transformed_test,
+            value=lowered_transformed_test.expr,
             lineno=0, col_offset=0,
         ))
 

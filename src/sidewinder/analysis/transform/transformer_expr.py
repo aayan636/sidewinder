@@ -1,4 +1,5 @@
 import ast
+import copy
 from typing import Any
 
 from sidewinder.analysis.transform.errors import SidewinderIllegalStateError
@@ -34,14 +35,17 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
             return [], node
         
         method_name = f'__{op_name}__'
+
+        lowered_left = self._visit_expr(node.left)
+        lowered_right = self._visit_expr(node.right)
         
-        return [], ast.Call(
+        return lowered_left.stmts + lowered_right.stmts, ast.Call(
             func=ast.Attribute(
-                value=self._visit_expr(node.left),
+                value=lowered_left.expr,
                 attr=method_name,
                 ctx=ast.Load()
             ),
-            args=[self._visit_expr(node.right), ast.Name(id='__sidewinder_state', ctx=ast.Load())],
+            args=[lowered_right.expr, ast.Name(id='__sidewinder_state', ctx=ast.Load())],
             keywords=[]
         )
     
@@ -66,13 +70,15 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         if op_name == 'not':
             # TODO: 'not x' should become something like: not x.__sidewinder_bool__(__sidewinder_state)
             # For now, just transform the operand
-            return [], ast.UnaryOp(op=node.op, operand=self._visit_expr(node.operand))
+            lowered_operand = self._visit_expr(node.operand)
+            return lowered_operand.stmts, ast.UnaryOp(op=node.op, operand=lowered_operand.expr)
         
         method_name = f'__sidewinder_{op_name}__'
-        
-        return [], ast.Call(
+
+        lowered_operand = self._visit_expr(node.operand)
+        return lowered_operand.stmts, ast.Call(
             func=ast.Attribute(
-                value=self._visit_expr(node.operand),
+                value=lowered_operand.expr,
                 attr=method_name,
                 ctx=ast.Load()
             ),
@@ -119,20 +125,24 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
             if op_name in ['is', 'is_not']:
                 # 'is' and 'is not' are identity checks, not method calls
                 # Transform operands but keep the operator
-                node.left = self._visit_expr(node.left)
-                node.comparators = [self._visit_expr(comparator)]
-                return [], node
+                lowered_left = self._visit_expr(node.left)
+                lowered_comparator = self._visit_expr(comparator)
+                node.left = lowered_left.expr
+                node.comparators = [lowered_comparator.expr]
+                return lowered_left.stmts + lowered_comparator.stmts, node
             
             if op_name in ['contains', 'not_contains']:
                 # 'in' is reversed: a in b -> b.__contains__(a)
                 method_name = "__contains__"
+                lowered_left = self._visit_expr(node.left)
+                lowered_comparator = self._visit_expr(comparator)
                 result = ast.Call(
                     func=ast.Attribute(
-                        value=self._visit_expr(comparator),
+                        value=lowered_comparator.expr,
                         attr=method_name,
                         ctx=ast.Load()
                     ),
-                    args=[self._visit_expr(node.left)],
+                    args=[lowered_left.expr],
                     keywords=[self._sidewinder_state_keyword()],
                 )
                 
@@ -140,17 +150,19 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
                     # Negate the result
                     result = ast.UnaryOp(op=ast.Not(), operand=result)
                 
-                return [], result
+                return lowered_left.stmts + lowered_comparator.stmts, result
             
             if op_name:
                 method_name = f'__{op_name}__'
-                return [], ast.Call(
+                lowered_left = self._visit_expr(node.left)
+                lowered_comparator = self._visit_expr(comparator)
+                return lowered_left.stmts + lowered_comparator.stmts, ast.Call(
                     func=ast.Attribute(
-                        value=self._visit_expr(node.left),
+                        value=lowered_left.expr,
                         attr=method_name,
                         ctx=ast.Load()
                     ),
-                    args=[self._visit_expr(comparator)],
+                    args=[lowered_comparator.expr],
                     keywords=[self._sidewinder_state_keyword()],
                 )
             else:
@@ -171,17 +183,28 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         func(a, x=b) -> func(a, __sidewinder_state=__sidewinder_state, x=b) [if func has **kwargs]
         """
         # Transform the function expression
+        context_stmts = []
         
-        transformed_func = self._visit_expr(node.func)
+        lowered_func = self._visit_expr(node.func)
+        context_stmts.extend(lowered_func.stmts)
         
         # Transform arguments
-        transformed_args = [self._visit_expr(arg) for arg in node.args]
-        transformed_keywords = [ast.keyword(kw.arg, self._visit_expr(kw.value)) for kw in node.keywords]
+        transformed_args = []
+        for arg in node.args:
+            lowered_arg = self._visit_expr(arg)
+            transformed_args.append(lowered_arg.expr)
+            context_stmts.extend(lowered_arg.stmts)
+
+        transformed_keywords = []
+        for kw in node.keywords:
+            lowered_kw_value = self._visit_expr(kw.value)
+            transformed_keywords.append(ast.keyword(kw.arg, lowered_kw_value.expr))
+            context_stmts.extend(lowered_kw_value.stmts)
 
         transformed_keywords.insert(0, self._sidewinder_state_keyword())
         
-        return [], ast.Call(
-            func=transformed_func,
+        return context_stmts, ast.Call(
+            func=lowered_func.expr,
             args=transformed_args,
             keywords=transformed_keywords,
             lineno=node.lineno,
@@ -202,21 +225,21 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         __t2 = __t1.__sidewinder_getattr__("c", __sidewinder_state__=__sidewinder_state__)
         """
         # recursively transform the object being accessed
-        visited_obj = self._visit_expr(node.value)
+        lowered_visited_obj = self._visit_expr(node.value)
 
         # store result in temp
         temp = self._fresh_temp("__sidewinder_attr")
         stmt = ast.Assign(
             targets=[ast.Name(id=temp, ctx=ast.Store())],
             value=self._emit_method_hook_call(
-                visited_obj,
+                lowered_visited_obj.expr,
                 SidewinderHookNames.SIDEWINDER_GETATTR,
                 ast.Constant(value=node.attr),
             ),
             lineno=0, col_offset=0,
         )
 
-        return [stmt], ast.Name(id=temp, ctx=ast.Load())
+        return lowered_visited_obj.stmts + [stmt], ast.Name(id=temp, ctx=ast.Load())
     
     def visit_Subscript(self, node: ast.Subscript) -> tuple[list[ast.stmt], ast.expr]:
         """
@@ -225,34 +248,43 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         a[b] ->
         __t1 = a.__sidewinder_getitem__(b,__sidewinder_state__=__sidewinder_state__)
         """
-        visited_obj = self._visit_expr(node.value)
-        visited_slice = self._visit_expr(node.slice)
+        lowered_visited_obj = self._visit_expr(node.value)
+        lowered_visited_slice = self._visit_expr(node.slice)
 
         temp = self._fresh_temp("__sidewinder_subscript")
 
         stmt = ast.Assign(
             targets=[ast.Name(id=temp, ctx=ast.Store())],
             value=self._emit_method_hook_call(
-                visited_obj,
+                lowered_visited_obj.expr,
                 SidewinderHookNames.SIDEWINDER_GETITEM,
-                visited_slice,
+                lowered_visited_slice.expr,
             ),
             lineno=0,
             col_offset=0,
         )
 
-        return [stmt], ast.Name(id=temp, ctx=ast.Load())
+        return lowered_visited_obj.stmts + lowered_visited_slice.stmts + [stmt], ast.Name(id=temp, ctx=ast.Load())
     
     def visit_Slice(self, node: ast.Slice) -> Any:
         """Transform slice - convert to slice object."""
         # a[1:5:2] -> slice(1, 5, 2)
-        return [], ast.Call(
+        lowered_lower = self._visit_expr(node.lower) if node.lower else None
+        lowered_upper = self._visit_expr(node.upper) if node.upper else None
+        lowered_step = self._visit_expr(node.step) if node.step else None
+        args = []
+        args.append(lowered_lower.expr if lowered_lower else ast.Constant(value=None))
+        args.append(lowered_upper.expr if lowered_upper else ast.Constant(value=None))
+        args.append(lowered_step.expr if lowered_step else ast.Constant(value=None))
+
+        context_stmts = []
+        context_stmts.extend(lowered_lower.stmts) if lowered_lower else None
+        context_stmts.extend(lowered_upper.stmts) if lowered_upper else None
+        context_stmts.extend(lowered_step.stmts) if lowered_step else None
+
+        return context_stmts, ast.Call(
             func=ast.Name(id='slice', ctx=ast.Load()),
-            args=[
-                self._visit_expr(node.lower) if node.lower else ast.Constant(value=None),
-                self._visit_expr(node.upper) if node.upper else ast.Constant(value=None),
-                self._visit_expr(node.step) if node.step else ast.Constant(value=None),
-            ],
+            args=args,
             keywords=[]
         )
     
@@ -357,9 +389,10 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
             node.args.args.append(state_param)
         
         # Transform body
-        node.body = self._visit_expr(node.body)
+        lowered_body = self._visit_expr(node.body)
+        node.body = lowered_body.expr
         
-        return [], node
+        return lowered_body.stmts, node
     
     def visit_IfExp(self, node: ast.IfExp) -> tuple[list[ast.stmt], ast.expr]:
         result = self._fresh_temp("__sidewinder_ifexp")
@@ -399,26 +432,68 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         return self._visit_list_of_stmts(stmts), ast.Name(id=result, ctx=ast.Load())
     
     def visit_Dict(self, node: ast.Dict) -> Any:
-        """Transform dictionary literal."""
-        assert (k is not None for k in node.keys), "Unpacking dict is not supported yet"
-        node.keys = [self._visit_expr(k) if k else None for k in node.keys]
-        node.values = [self._visit_expr(v) for v in node.values]
-        return [], node
+        stmts = []
+        new_keys = []
+        new_values = []
+
+        for key, value in zip(node.keys, node.values):
+            if key is None:
+                raise NotImplementedError("Dict unpacking not supported")
+
+            lowered = self._visit_expr(key)
+            stmts.extend(lowered.stmts)
+            new_keys.append(lowered.expr)
+
+            lowered = self._visit_expr(value)
+            stmts.extend(lowered.stmts)
+            new_values.append(lowered.expr)
+
+        node.keys = new_keys
+        node.values = new_values
+
+        return stmts, node
     
     def visit_Set(self, node: ast.Set) -> Any:
         """Transform set literal."""
-        node.elts = [self._visit_expr(elt) for elt in node.elts]
-        return [], node
+        stmts = []
+        new_elts = []
+
+        for elt in node.elts:
+            lowered = self._visit_expr(elt)
+            stmts.extend(lowered.stmts)
+            new_elts.append(lowered.expr)
+
+        node.elts = new_elts
+
+        return stmts, node
     
     def visit_List(self, node: ast.List) -> Any:
         """Transform list literal."""
-        node.elts = [self._visit_expr(elt) for elt in node.elts]
-        return [], node
+        stmts = []
+        new_elts = []
+
+        for elt in node.elts:
+            lowered = self._visit_expr(elt)
+            stmts.extend(lowered.stmts)
+            new_elts.append(lowered.expr)
+
+        node.elts = new_elts
+
+        return stmts, node
     
     def visit_Tuple(self, node: ast.Tuple) -> Any:
         """Transform tuple literal."""
-        node.elts = [self._visit_expr(elt) for elt in node.elts]
-        return [], node
+        stmts = []
+        new_elts = []
+
+        for elt in node.elts:
+            lowered = self._visit_expr(elt)
+            stmts.extend(lowered.stmts)
+            new_elts.append(lowered.expr)
+
+        node.elts = new_elts
+
+        return stmts, node
     
     def visit_Await(self, node: ast.Await) -> Any:
         """Transform await expression."""
@@ -426,23 +501,49 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
     
     def visit_FormattedValue(self, node: ast.FormattedValue) -> Any:
         """Transform formatted value in f-string."""
-        node.value = self._visit_expr(node.value)
+        stmts = []
+
+        lowered = self._visit_expr(node.value)
+        stmts.extend(lowered.stmts)
+        node.value = lowered.expr
+
         if node.format_spec:
-            node.format_spec = self._visit_expr(node.format_spec)
-        return [], node
+            lowered = self._visit_expr(node.format_spec)
+            stmts.extend(lowered.stmts)
+            node.format_spec = lowered.expr
+
+        return stmts, node
     
     def visit_JoinedStr(self, node: ast.JoinedStr) -> Any:
         """Transform f-string."""
-        node.values = [self._visit_expr(val) for val in node.values]
-        return [], node
+        stmts = []
+        new_values = []
+
+        for value in node.values:
+            lowered = self._visit_expr(value)
+            stmts.extend(lowered.stmts)
+            new_values.append(lowered.expr)
+
+        node.values = new_values
+
+        return stmts, node
     
     def visit_Starred(self, node: ast.Starred) -> Any:
         """Transform starred expression."""
-        node.value = self._visit_expr(node.value)
-        return [], node
+        stmts = []
+
+        lowered = self._visit_expr(node.value)
+        stmts.extend(lowered.stmts)
+        node.value = lowered.expr
+
+        return stmts, node
     
     def visit_Name(self, node: ast.Name) -> Any:
         """Name nodes are unchanged."""
+        node.lineno = 0
+        node.end_lineno = None
+        node.col_offset = 0
+        node.end_col_offset = None
         return [], node
     
     def visit_Constant(self, node: ast.Constant) -> Any:

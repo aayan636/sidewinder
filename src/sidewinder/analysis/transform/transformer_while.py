@@ -28,9 +28,13 @@ class SidewinderWhileTransformerMixin(SidewinderTransformerHelpers):
 
         # __sidewinder_condN__ = <transformed_condition>
         cond_temp = self._fresh_temp("__sidewinder_cond")
+
+        lowered_test = self._visit_expr(node.test)
+        result.extend(lowered_test.stmts)
+
         result.append(ast.Assign(
             targets=[ast.Name(id=cond_temp, ctx=ast.Store())],
-            value=self._visit_expr(node.test),
+            value=lowered_test.expr,
             lineno=0, col_offset=0,
         ))
 
@@ -52,9 +56,9 @@ class SidewinderWhileTransformerMixin(SidewinderTransformerHelpers):
             lineno=0, col_offset=0,
         )
 
-        with self.current_context.enter_context(while_node, "body") as c:
+        with self.current_context.enter_context(while_node, "body"):
             # push true condition
-            c.append_stmt(
+            while_node.body.append(
                 ast.Expr(value=self._emit_hook_call(
                     SidewinderHookNames.SIDEWINDER_CONDITION_TRUE,
                     ast.Name(id=cond_temp, ctx=ast.Load())
@@ -65,20 +69,23 @@ class SidewinderWhileTransformerMixin(SidewinderTransformerHelpers):
             while_node.body.extend(self._visit_list_of_stmts(node.body))
 
             # union update condition
-            c.append_stmt(
+            lowered_second_test = self._visit_expr(node.test)
+            for stmt in lowered_second_test.stmts:
+                while_node.body.append(stmt)
+            while_node.body.append(
                 ast.Assign(
                     targets=[ast.Name(id=cond_temp, ctx=ast.Store())],
                     value=self._emit_hook_call(
                         SidewinderHookNames.SIDEWINDER_UNION,
                         ast.Name(id=cond_temp, ctx=ast.Load()),
-                        self._visit_expr(node.test),
+                        lowered_second_test.expr,
                     ),
                     lineno=0, col_offset=0,
                 )
             )
 
             # fixed point check
-            c.append_stmt(
+            while_node.body.append(
                 ast.Assign(
                     targets=[ast.Name(id=fixed_point_temp, ctx=ast.Store())],
                     value=self._emit_hook_call(SidewinderHookNames.SIDEWINDER_FIXED_POINT),
@@ -86,7 +93,7 @@ class SidewinderWhileTransformerMixin(SidewinderTransformerHelpers):
                 )
             )
 
-            c.append_stmt(
+            while_node.body.append(
                 ast.Expr(value=self._emit_hook_call(
                     SidewinderHookNames.SIDEWINDER_POP_CONDITION,
                 ), lineno=0, col_offset=0),

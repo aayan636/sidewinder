@@ -58,11 +58,13 @@ class SidewinderForTransformerMixin(SidewinderTransformerHelpers):
         iter_tmp     = self._fresh_temp("__aiter" if is_async else "__iter")
 
         # _iter = iterable.__sidewinder_iter__(__sidewinder_state)
+        lowered_iter_expr = self._visit_expr(iter_expr)
+
         iter_assign = ast.Assign(
             targets=[ast.Name(id=iter_tmp, ctx=ast.Store())],
             value=ast.Call(
                 func=ast.Attribute(
-                    value=self._visit_expr(iter_expr),
+                    value=lowered_iter_expr.expr,
                     attr=iter_method,
                     ctx=ast.Load(),
                 ),
@@ -121,4 +123,7 @@ class SidewinderForTransformerMixin(SidewinderTransformerHelpers):
             lineno=0, col_offset=0,
         )
 
-        return [iter_assign, while_loop]
+        ret = []
+        ret.extend(lowered_iter_expr.stmts)
+        ret.extend([iter_assign, while_loop])
+        return ret
