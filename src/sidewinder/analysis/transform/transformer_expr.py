@@ -1,4 +1,5 @@
 import ast
+import copy
 from typing import Any
 
 from sidewinder.analysis.transform.errors import SidewinderIllegalStateError
@@ -539,6 +540,10 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
     
     def visit_Name(self, node: ast.Name) -> Any:
         """Name nodes are unchanged."""
+        node.lineno = 0
+        node.end_lineno = None
+        node.col_offset = 0
+        node.end_col_offset = None
         return [], node
     
     def visit_Constant(self, node: ast.Constant) -> Any:

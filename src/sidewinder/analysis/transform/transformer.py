@@ -141,7 +141,7 @@ class SidewinderTransformer(
         lowered_value = self._visit_expr(node.value)
         ret = []
         ret.extend(lowered_value.stmts)
-        ret.append(lowered_value.expr)
+        ret.append(ast.Expr(value=lowered_value.expr))
         return ret
     
     def visit_Pass(self, node: ast.Pass) -> Any:

@@ -66,9 +66,9 @@ test_cases = discover_tests()
         ids=[f"{input_file.parent.stem}::{input_file.stem}" for input_file, _ in test_cases]
 )
 def test_transformer(input_file: Path, expected_file: Path) -> None:
-    # parse input
-    if "if_without_else" not in input_file.__str__():
-        pytest.skip()
+    # # parse input
+    # if "if_without_else" not in input_file.__str__():
+    #     pytest.skip()
     input_tree = _parse_file(input_file)
 
     # transform

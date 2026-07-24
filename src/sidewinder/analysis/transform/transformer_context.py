@@ -34,7 +34,7 @@ class TransformerContext:
         """Exit the current context."""
         if not self.context_stack:
             raise RuntimeError("Cannot pop_context: context stack is empty")
-        setattr(self.context_stack[-1][0], self.context_stack[-1][1], self.context_stack[-1][2])
+        # setattr(self.context_stack[-1][0], self.context_stack[-1][1], self.context_stack[-1][2])
         return self.context_stack.pop()[:-1]
     
     @contextmanager
