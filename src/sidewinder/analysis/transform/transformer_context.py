@@ -18,7 +18,7 @@ class TransformerContext:
     def __init__(self):
         # Stack of (node, attr_name) tuples
         # e.g., (If node, 'body') or (If node, 'orelse')
-        self.context_stack: List[Tuple[ast.AST, str]] = []
+        self.context_stack: List[Tuple[ast.AST, str, list]] = []
     
     def push_context(self, node: ast.AST, attr_name: str) -> None:
         """
@@ -28,13 +28,14 @@ class TransformerContext:
             node: The AST node containing the statement list
             attr_name: The attribute name (e.g., 'body', 'orelse', 'finalbody')
         """
-        self.context_stack.append((node, attr_name))
+        self.context_stack.append((node, attr_name, []))
     
     def pop_context(self) -> Tuple[ast.AST, str]:
         """Exit the current context."""
         if not self.context_stack:
             raise RuntimeError("Cannot pop_context: context stack is empty")
-        return self.context_stack.pop()
+        setattr(self.context_stack[-1][0], self.context_stack[-1][1], self.context_stack[-1][2])
+        return self.context_stack.pop()[:-1]
     
     @contextmanager
     def enter_context(self, node: ast.AST, attr_name: str):
@@ -54,10 +55,6 @@ class TransformerContext:
         finally:
             self.pop_context()
     
-    def current_context(self) -> Optional[Tuple[ast.AST, str]]:
-        """Get the current (node, attr_name) context."""
-        return self.context_stack[-1] if self.context_stack else None
-    
     def append_stmt(self, stmt: ast.stmt) -> None:
         """
         Append a statement to the current context's statement list.
@@ -67,16 +64,14 @@ class TransformerContext:
         if not self.context_stack:
             raise RuntimeError("No context available - cannot append statement")
         
-        node, attr_name = self.context_stack[-1]
+        node, attr_name, stmt_list = self.context_stack[-1]
         
         if not hasattr(node, attr_name):
             raise RuntimeError(
                 f"Node {type(node).__name__} has no attribute '{attr_name}'"
             )
-        
-        stmt_list = getattr(node, attr_name)
-        
-        if not isinstance(stmt_list, list):
+                
+        if not isinstance(getattr(node, attr_name), list):
             raise RuntimeError(
                 f"Attribute {attr_name} of {type(node).__name__} is not a list"
             )

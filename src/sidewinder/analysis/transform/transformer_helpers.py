@@ -3,7 +3,7 @@ from typing import Dict, List, Any, Optional, Set, Union, overload, TypeVar
 from collections import defaultdict
 import copy
 
-from sidewinder.analysis.transform.transformer_base import SidewinderTransformerBase, T
+from sidewinder.analysis.transform.transformer_base import SidewinderTransformerBase, T, LoweredExpr
 from sidewinder.analysis.transform.transformer_context import TransformerContext
 from sidewinder.analysis.transform.errors import SidewinderIllegalStateError
 from sidewinder.analysis.symbolic.hook import SidewinderHookNames
@@ -84,11 +84,9 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
                 result.append(visited)
         return result
     
-    def _visit_expr(self, expr: T) -> ast.expr:
+    def _visit_expr(self, expr: T) -> LoweredExpr:
         generated_stmts, final_expr = self.visit(expr)
-        for stmt in generated_stmts:
-            self.current_context.append_stmt(stmt)
-        return final_expr
+        return LoweredExpr(stmts=generated_stmts, expr=final_expr)
     
     def _visit_target(self, target: ast.expr | ast.Tuple | ast.List, visited_rhs: ast.expr) -> List[ast.stmt]:
         """

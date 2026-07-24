@@ -90,7 +90,7 @@ class SidewinderTransformer(
         return node
     
     
-    def visit_Assert(self, node: ast.Assert) -> ast.Expr:
+    def visit_Assert(self, node: ast.Assert) -> list[ast.stmt]:
         """
         Transform assert statement to explicit sidewinder call.
         
@@ -102,14 +102,20 @@ class SidewinderTransformer(
         becomes:
         __sidewinder_assert__(expr<transformed>, msg<transformed>, __sidewinder_state=__sidewinder_state)
         """
-        args = [self._visit_expr(node.test)]
+        lowered_test = self._visit_expr(node.test)
+        args = [lowered_test.expr]
         if node.msg is not None:
-            args.append(self._visit_expr(node.msg))
+            lowered_msg = self._visit_expr(node.msg)
+            args.append(lowered_msg.expr)
 
-        return ast.Expr(
+        ret: list[ast.stmt] = []
+        ret.extend(lowered_test.stmts)
+        ret.extend(lowered_msg.stmts)
+        ret.append(ast.Expr(
             self._emit_hook_call(SidewinderHookNames.SIDEWINDER_ASSERT, *args),
             lineno=0, col_offset=0,
-        )
+        ))
+        return ret
     
     def visit_Import(self, node: ast.Import) -> Any:
         """Import statements pass through unchanged."""

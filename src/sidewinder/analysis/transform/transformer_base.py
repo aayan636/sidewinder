@@ -34,3 +34,10 @@ class SidewinderTransformerBase(ast.NodeTransformer):
     def visit(self, node: ast.AST) -> Any:
         return super().visit(node)
 
+class LoweredExpr:
+    stmts: list[ast.stmt]
+    expr: ast.expr
+
+    def __init__(self, stmts, expr):
+        self.stmts = stmts
+        self.expr = expr
