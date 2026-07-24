@@ -28,9 +28,13 @@ class SidewinderWhileTransformerMixin(SidewinderTransformerHelpers):
 
         # __sidewinder_condN__ = <transformed_condition>
         cond_temp = self._fresh_temp("__sidewinder_cond")
+
+        lowered_test = self._visit_expr(node.test)
+        result.extend(lowered_test.stmts)
+
         result.append(ast.Assign(
             targets=[ast.Name(id=cond_temp, ctx=ast.Store())],
-            value=self._visit_expr(node.test),
+            value=lowered_test.expr,
             lineno=0, col_offset=0,
         ))
 
@@ -52,6 +56,7 @@ class SidewinderWhileTransformerMixin(SidewinderTransformerHelpers):
             lineno=0, col_offset=0,
         )
 
+        # TODO: REMOVE THIS APPEND TO CONTEXT NONSENSE
         with self.current_context.enter_context(while_node, "body") as c:
             # push true condition
             c.append_stmt(
@@ -65,13 +70,16 @@ class SidewinderWhileTransformerMixin(SidewinderTransformerHelpers):
             while_node.body.extend(self._visit_list_of_stmts(node.body))
 
             # union update condition
+            lowered_second_test = self._visit_expr(node.test)
+            for stmt in lowered_second_test.stmts:
+                c.append_stmt(stmt)
             c.append_stmt(
                 ast.Assign(
                     targets=[ast.Name(id=cond_temp, ctx=ast.Store())],
                     value=self._emit_hook_call(
                         SidewinderHookNames.SIDEWINDER_UNION,
                         ast.Name(id=cond_temp, ctx=ast.Load()),
-                        self._visit_expr(node.test),
+                        lowered_second_test.expr,
                     ),
                     lineno=0, col_offset=0,
                 )

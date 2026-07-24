@@ -74,9 +74,11 @@ class SidewinderWithTransformerMixin(SidewinderTransformerHelpers):
         item = items[0]
         ctx_tmp = self._fresh_temp("__ctx")
 
+        lowered_context_expr = self._visit_expr(item.context_expr)
+
         enter_call = ast.Call(
             func=ast.Attribute(
-                value=self._visit_expr(item.context_expr),
+                value=lowered_context_expr.expr,
                 attr=enter_method,
                 ctx=ast.Load(),
             ),
@@ -124,4 +126,8 @@ class SidewinderWithTransformerMixin(SidewinderTransformerHelpers):
             lineno=0, col_offset=0,
         )]
 
-        return [ctx_assign, try_block]
+        ret = []
+        ret.extend(lowered_context_expr.stmts)
+        ret.append(ctx_assign)
+        ret.append(try_block)
+        return ret

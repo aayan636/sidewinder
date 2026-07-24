@@ -106,26 +106,33 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
 
             case ast.Attribute():
                 # y.attr = rhs  →  _visit_expr(y).__setattr__("attr", rhs)
-                obj = self._visit_expr(target.value)
-                return [
+                lowered_obj = self._visit_expr(target.value)
+                ret = []
+                ret.extend(lowered_obj.stmts)
+                ret.append([
                     ast.Expr(value=ast.Call(
-                        func=ast.Attribute(value=obj, attr="__sidewinder_setattr__", ctx=ast.Load()),
+                        func=ast.Attribute(value=lowered_obj.expr, attr="__sidewinder_setattr__", ctx=ast.Load()),
                         args=[ast.Constant(value = target.attr), visited_rhs],
                         keywords=[],
                     ), lineno=0, col_offset=0)
-                ]
+                ])
+                return ret
 
             case ast.Subscript():
                 # y[i] = rhs  →  _visit_expr(y).__setitem__(_visit_expr(i), rhs)
-                obj = self._visit_expr(target.value)
-                idx = self._visit_expr(target.slice)
-                return [
+                lowered_obj = self._visit_expr(target.value)
+                lowered_idx = self._visit_expr(target.slice)
+                ret = []
+                ret.extend(lowered_obj.stmts)
+                ret.extend(lowered_idx.stmts)
+                ret.append([
                     ast.Expr(value=ast.Call(
-                        func=ast.Attribute(value=obj, attr="__sidewinder_setitem__", ctx=ast.Load()),
-                        args=[idx, visited_rhs],
+                        func=ast.Attribute(value=lowered_obj.expr, attr="__sidewinder_setitem__", ctx=ast.Load()),
+                        args=[lowered_idx.expr, visited_rhs],
                         keywords=[],
                     ), lineno=0, col_offset=0)
-                ]
+                ])
+                return ret
 
             case ast.Tuple() | ast.List():
                 to_return = []
@@ -182,3 +189,65 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
             case _:
                 # anything else: func() = rhs, (x + y) = rhs, literal = rhs etc.
                 raise NotImplementedError(f"unsupported assignment target: {ast.dump(target)}")
+
+    def _transform_decorators(
+        self,
+        node: Union[ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef],
+    ) -> tuple[list[ast.stmt], list[ast.stmt]]:
+        """
+        Lower decorators.
+
+        For:
+
+            @dec1
+            @dec2
+            def/class Foo:
+                ...
+
+        Produces:
+
+            <evaluate dec1>
+            <evaluate dec2>
+
+            Foo = dec2(Foo)
+            Foo = dec1(Foo)
+
+        Returns:
+            (pre_stmts, post_stmts)
+
+            pre_stmts:
+                statements needed to evaluate decorator expressions
+
+            post_stmts:
+                decorator application assignments
+        """
+
+        pre_stmts = []
+        dec_expressions: list[ast.expr] = []
+
+        for dec in node.decorator_list:
+            lowered_dec = self._visit_expr(dec)
+            pre_stmts.extend(lowered_dec.stmts)
+            dec_expressions.append(lowered_dec.expr)
+
+        node.decorator_list = []
+
+        post_stmts = []
+
+        for dec_expr in reversed(dec_expressions):
+            post_stmts.append(
+                ast.Assign(
+                    targets=[
+                        ast.Name(id=node.name, ctx=ast.Store())
+                    ],
+                    value=ast.Call(
+                        func=dec_expr,
+                        args=[
+                            ast.Name(id=node.name, ctx=ast.Load())
+                        ],
+                        keywords=[]
+                    )
+                )
+            )
+
+        return pre_stmts, post_stmts
