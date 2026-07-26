@@ -6,9 +6,9 @@ from sidewinder.analysis.transform.transformer_helpers import SidewinderTransfor
 class SidewinderModuleTransformerMixin(SidewinderTransformerHelpers):
     def visit_Module(self, node: ast.Module) -> Any:
         """Visit a module node - add import for SidewinderState."""
-        # Add import: from sidewinder.analysis.symbolic.state import SidewinderState
+        # Add import: from sidewinder.analysis.symbolic.runtime.memory.state import SidewinderState
         import_node = ast.ImportFrom(
-            module="sidewinder.analysis.symbolic.state",
+            module="sidewinder.analysis.symbolic.runtime.memory.state",
             names=[ast.alias(name="SidewinderState", asname=None)],
             level=0
         )

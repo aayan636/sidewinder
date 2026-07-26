@@ -90,7 +90,7 @@ class SidewinderTransformer(
         return node
     
     
-    def visit_Assert(self, node: ast.Assert) -> ast.Expr:
+    def visit_Assert(self, node: ast.Assert) -> list[ast.stmt]:
         """
         Transform assert statement to explicit sidewinder call.
         
@@ -102,14 +102,20 @@ class SidewinderTransformer(
         becomes:
         __sidewinder_assert__(expr<transformed>, msg<transformed>, __sidewinder_state=__sidewinder_state)
         """
-        args = [self._visit_expr(node.test)]
+        lowered_test = self._visit_expr(node.test)
+        args = [lowered_test.expr]
         if node.msg is not None:
-            args.append(self._visit_expr(node.msg))
+            lowered_msg = self._visit_expr(node.msg)
+            args.append(lowered_msg.expr)
 
-        return ast.Expr(
+        ret: list[ast.stmt] = []
+        ret.extend(lowered_test.stmts)
+        ret.extend(lowered_msg.stmts)
+        ret.append(ast.Expr(
             self._emit_hook_call(SidewinderHookNames.SIDEWINDER_ASSERT, *args),
             lineno=0, col_offset=0,
-        )
+        ))
+        return ret
     
     def visit_Import(self, node: ast.Import) -> Any:
         """Import statements pass through unchanged."""
@@ -127,13 +133,16 @@ class SidewinderTransformer(
         """Nonlocal statements pass through unchanged."""
         return node
     
-    def visit_Expr(self, node: ast.Expr) -> ast.Expr:
+    def visit_Expr(self, node: ast.Expr) -> list[ast.stmt]:
         """
         Transform expression statement — a bare expression used as a statement.
         e.g. function calls whose return value is discarded: foo(), obj.method()
         """
-        node.value = self._visit_expr(node.value)
-        return node
+        lowered_value = self._visit_expr(node.value)
+        ret = []
+        ret.extend(lowered_value.stmts)
+        ret.append(ast.Expr(value=lowered_value.expr))
+        return ret
     
     def visit_Pass(self, node: ast.Pass) -> Any:
         """Pass statements are unchanged."""
@@ -211,16 +220,27 @@ class SidewinderTransformer(
         # Arguments are handled by FunctionDef/Lambda visitors
         return node
     
-    def visit_arg(self, node: ast.arg) -> Any:
+    def visit_arg(self, node: ast.arg) -> list[ast.AST]:
         """Transform function argument."""
+        # TODO: This is not a expr or stmt, if theres a complex expression here it may :blows raspberry:. (Pydantic annotations could complain)
         if node.annotation:
-            node.annotation = self._visit_expr(node.annotation)
-        return node
+            lowered_annotation = self._visit_expr(node.annotation)
+            node.annotation = lowered_annotation.expr
+            ret = []
+            ret.extend(lowered_annotation.stmts)
+            ret.append(node)
+            return ret
+        else:
+            return [node]
     
-    def visit_keyword(self, node: ast.keyword) -> Any:
+    def visit_keyword(self, node: ast.keyword) -> list[ast.stmt]:
         """Transform keyword argument."""
-        node.value = self._visit_expr(node.value)
-        return node
+        lowered_keyword = self._visit_expr(node.value)
+        node.value = lowered_keyword.expr
+        ret = []
+        ret.extend(lowered_keyword.stmts)
+        ret.append(node)
+        return ret
     
     def visit_alias(self, node: ast.alias) -> Any:
         """Import alias is unchanged."""

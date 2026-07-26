@@ -1,4 +1,4 @@
-from sidewinder.analysis.symbolic.state import SidewinderState
+from sidewinder.analysis.symbolic.runtime.memory.state import SidewinderState
 
 __sidewinder_cond0 = x
 __sidewinder_fixed_point1 = False

@@ -1,2 +1,3 @@
-from sidewinder.analysis.symbolic.state import SidewinderState
-f(x, __sidewinder_state=__sidewinder_state, y=z)
+from sidewinder.analysis.symbolic.runtime.memory.state import SidewinderState
+__t0 = __sidewinder_call__(f, x, __sidewinder_state=__sidewinder_state, y=z)
+__t0

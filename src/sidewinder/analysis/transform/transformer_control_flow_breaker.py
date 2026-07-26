@@ -7,10 +7,14 @@ from sidewinder.analysis.symbolic.hook import SidewinderHookNames
 class SidewinderControlFlowBreakerTransformerMixin(SidewinderTransformerHelpers):
     def visit_Return(self, node: ast.Return) -> Any:
         """Transform return statement - transform the return value."""
-        return ast.Expr(value=self._emit_hook_call(
+        lowered_value = self._visit_expr(node.value) if node.value else None
+        ret = []
+        ret.extend(lowered_value.stmts) if lowered_value else None
+        ret.append(ast.Expr(value=self._emit_hook_call(
             SidewinderHookNames.SIDEWINDER_RETURN,
-            self._visit_expr(node.value) if node.value else ast.Constant(value=None)
-        ), lineno=0, col_offset=0)
+            lowered_value.expr if lowered_value else ast.Constant(value=None)
+        ), lineno=0, col_offset=0))
+        return ret
     
     def visit_Break(self, node: ast.Break) -> ast.Expr:
         """
@@ -55,11 +59,16 @@ class SidewinderControlFlowBreakerTransformerMixin(SidewinderTransformerHelpers)
         __sidewinder_raise__(__sidewinder_state=__sidewinder_state)
         """
 
+        stmts = []
         args = []
         if node.exc is not None:
-            args = [self._visit_expr(node.exc)]
+            lowered_exc = self._visit_expr(node.exc)
+            args = [lowered_exc.expr]
+            stmts.extend(lowered_exc.stmts)
             if node.cause is not None:
-                args.append(self._visit_expr(node.cause))
+                lowered_cause = self._visit_expr(node.cause)
+                args.append(lowered_cause.expr)
+                stmts.extend(lowered_cause.stmts)
 
         return ast.Expr(
             value=self._emit_hook_call(SidewinderHookNames.SIDEWINDER_RAISE, *args),

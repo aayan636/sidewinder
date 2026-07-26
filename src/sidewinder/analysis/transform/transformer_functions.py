@@ -44,11 +44,23 @@ class SidewinderFunctionTransformerMixin(SidewinderTransformerHelpers):
         # TODO: Fixed point statement must be added
         with self.current_context.enter_context(node, "body") as c:
             node.body = self._visit_list_of_stmts(node.body)
-        
-        # Transform decorators
-        node.decorator_list = [self._visit_expr(dec) for dec in node.decorator_list]     
-        
-        return node
+
+        # Lower decorators
+        decorator_pre, decorator_post = self._transform_decorators(node)
+
+        ret = []
+
+        # Evaluate decorator expressions before definition
+        ret.extend(decorator_pre)
+
+        # Emit function definition
+        ret.append(node)
+
+        # Apply decorators after definition
+        decorator_transforms = self._visit_list_of_stmts(decorator_post)
+        ret.extend(decorator_transforms)
+
+        return ret
     
     def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
         """Visit a function definition."""

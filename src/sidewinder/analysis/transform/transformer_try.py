@@ -79,9 +79,12 @@ class SidewinderTryTransformerMixin(SidewinderTransformerHelpers):
             # Evaluate exception type expression symbolically
             if exc_type is not None:
                 exc_type_temp = self._fresh_temp("__sidewinder_exc_type")
+                lowered_exc_type = self._visit_expr(exc_type)
+
+                result.extend(lowered_exc_type.stmts)
                 result.append(ast.Assign(
                     targets=[ast.Name(id=exc_type_temp, ctx=ast.Store())],
-                    value=self._visit_expr(exc_type),
+                    value=lowered_exc_type.expr,
                     lineno=0, col_offset=0,
                 ))
                 exc_type_arg = ast.Name(id=exc_type_temp, ctx=ast.Load())
