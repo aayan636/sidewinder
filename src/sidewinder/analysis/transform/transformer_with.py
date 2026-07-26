@@ -5,46 +5,39 @@ from sidewinder.analysis.transform.transformer_helpers import SidewinderTransfor
 class SidewinderWithTransformerMixin(SidewinderTransformerHelpers):
     def visit_With(self, node: ast.With) -> list[ast.stmt]:
         """
-        Transform with statement to explicit __enter__/__exit__ calls.
-        
-        with expr as var:
-            body
-        
-        Becomes:
-        __ctx = expr.__sidewinder_enter__(__sidewinder_state)
-        try:
-            var = __ctx
-            body
-        finally:
-            __ctx.__sidewinder_exit__(__sidewinder_state)
+        Normalize a `with` statement into simpler AST constructs before the
+        Sidewinder lowering pass.
 
-        Multiple context managers are desugared recursively:
-        with a as x, b as y:
-            body
-        
-        Becomes:
-        with a as x:
-            with b as y:
-                body
+        TODO(sidewinder): This is a simplified desugaring and does NOT exactly
+        match Python's context manager semantics.
+
+        In particular:
+        - __exit__ is not passed exception information.
+        - Exception suppression is not modeled.
+        - The exact protocol defined by the language reference is intentionally
+        simplified.
+
+        Multiple context managers are recursively desugared.
         """
-        return self._transform_with(node.items, node.body, node.lineno, node.col_offset, is_async=False)
+        return self._transform_with(
+            node.items,
+            node.body,
+            node.lineno,
+            node.col_offset,
+            is_async=False,
+        )
+
 
     def visit_AsyncWith(self, node: ast.AsyncWith) -> list[ast.stmt]:
-        """
-        Transform async with statement to explicit __aenter__/__aexit__ calls.
-        
-        async with expr as var:
-            body
-        
-        Becomes:
-        __ctx = await expr.__sidewinder_aenter__(__sidewinder_state)
-        try:
-            var = __ctx
-            body
-        finally:
-            await __ctx.__sidewinder_aexit__(__sidewinder_state)
-        """
-        return self._transform_with(node.items, node.body, node.lineno, node.col_offset, is_async=True)
+        """See visit_With()."""
+        return self._transform_with(
+            node.items,
+            node.body,
+            node.lineno,
+            node.col_offset,
+            is_async=True,
+        )
+
 
     def _transform_with(
         self,
@@ -54,80 +47,109 @@ class SidewinderWithTransformerMixin(SidewinderTransformerHelpers):
         col_offset: int,
         is_async: bool,
     ) -> list[ast.stmt]:
-
+        # Desugar multiple context managers recursively.
         if len(items) > 1:
-            inner = ast.With(
-                items=items[1:],
-                body=body,
-                lineno=lineno, col_offset=col_offset,
-            ) if not is_async else ast.AsyncWith(
-                items=items[1:],
-                body=body,
-                lineno=lineno, col_offset=col_offset,
+            inner = (
+                ast.AsyncWith(
+                    items=items[1:],
+                    body=body,
+                    lineno=lineno,
+                    col_offset=col_offset,
+                )
+                if is_async
+                else ast.With(
+                    items=items[1:],
+                    body=body,
+                    lineno=lineno,
+                    col_offset=col_offset,
+                )
             )
-            # Extract the first context variable, and the constructed with the reamining variables processed separately
-            return self._transform_with([items[0]], [inner], lineno, col_offset, is_async)
-        
-        enter_method = '__sidewinder_aenter__' if is_async else '__sidewinder_enter__'
-        exit_method  = '__sidewinder_aexit__'  if is_async else '__sidewinder_exit__'
+            return self._transform_with(
+                [items[0]],
+                [inner],
+                lineno,
+                col_offset,
+                is_async,
+            )
 
         item = items[0]
-        ctx_tmp = self._fresh_temp("__ctx")
+        mgr_name = self._fresh_temp("__mgr")
 
-        lowered_context_expr = self._visit_expr(item.context_expr)
+        # __mgr = expr
+        mgr_assign = ast.Assign(
+            targets=[ast.Name(id=mgr_name, ctx=ast.Store())],
+            value=item.context_expr,
+            lineno=lineno,
+            col_offset=col_offset,
+        )
+
+        enter_name = "__enter__" if not is_async else "__aenter__"
+        exit_name = "__exit__" if not is_async else "__aexit__"
 
         enter_call = ast.Call(
             func=ast.Attribute(
-                value=lowered_context_expr.expr,
-                attr=enter_method,
+                value=ast.Name(id=mgr_name, ctx=ast.Load()),
+                attr=enter_name,
                 ctx=ast.Load(),
             ),
             args=[],
-            keywords=[ast.keyword(arg='__sidewinder_state', value=ast.Name(id='__sidewinder_state', ctx=ast.Load()))],
+            keywords=[],
         )
 
-        # __ctx = await expr.__sidewinder_aenter__(...) or expr.__sidewinder_enter__(...)
-        ctx_assign = ast.Assign(
-            targets=[ast.Name(id=ctx_tmp, ctx=ast.Store())],
-            value=ast.Await(value=enter_call) if is_async else enter_call,
-            lineno=0, col_offset=0,
+        enter_value: ast.expr = (
+            ast.Await(value=enter_call) if is_async else enter_call
         )
 
-        try_block = ast.Try(
-            body=[],
-            handlers=[],
-            orelse=[],
-            finalbody=[],
-        )
+        try_body: list[ast.stmt] = []
 
-        with self.current_context.enter_context(try_block, "body"):
-            if item.optional_vars is not None:
-                self._visit_target(
-                    item.optional_vars,
-                    ast.Name(id=ctx_tmp, ctx=ast.Load()),
+        if item.optional_vars is not None:
+            try_body.append(
+                ast.Assign(
+                    targets=[item.optional_vars],
+                    value=enter_value,
+                    lineno=lineno,
+                    col_offset=col_offset,
                 )
-            transformed_body = self._visit_list_of_stmts(body)
+            )
+        else:
+            try_body.append(
+                ast.Expr(
+                    value=enter_value,
+                    lineno=lineno,
+                    col_offset=col_offset,
+                )
+            )
 
-        try_block.body.extend(transformed_body)
+        try_body.extend(body)
 
         exit_call = ast.Call(
             func=ast.Attribute(
-                value=ast.Name(id=ctx_tmp, ctx=ast.Load()),
-                attr=exit_method,
+                value=ast.Name(id=mgr_name, ctx=ast.Load()),
+                attr=exit_name,
                 ctx=ast.Load(),
             ),
             args=[],
-            keywords=[ast.keyword(arg='__sidewinder_state', value=ast.Name(id='__sidewinder_state', ctx=ast.Load()))],
+            keywords=[],
         )
 
-        # In the transformed version we will only have a single name being used to call the __exit__ method (roughly __ctx.__exit__(....) so this should work)
-        try_block.finalbody = [ast.Expr(
-            value=ast.Await(value=exit_call) if is_async else exit_call,
-            lineno=0, col_offset=0,
-        )]
+        exit_expr: ast.expr = (
+            ast.Await(value=exit_call) if is_async else exit_call
+        )
 
-        ret = []
-        ret.extend(lowered_context_expr.stmts)
-        ret.append(ctx_assign)
-        ret.append(try_block)
-        return ret
+        try_stmt = ast.Try(
+            body=try_body,
+            handlers=[],
+            orelse=[],
+            finalbody=[
+                ast.Expr(
+                    value=exit_expr,
+                    lineno=lineno,
+                    col_offset=col_offset,
+                )
+            ],
+            lineno=lineno,
+            col_offset=col_offset,
+        )
+
+        # Push the normalized AST back through the transformer.
+        return self._visit_list_of_stmts([mgr_assign, try_stmt])

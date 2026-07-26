@@ -34,12 +34,12 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
         self,
         hook: SidewinderHookNames,
         *args: ast.expr,
-        extra_kwargs: Optional[Dict[str, ast.expr]] = None
+        extra_kwargs: Optional[Dict[str | None, ast.expr]] = None
     ) -> ast.Call:
         """Create a sidewinder hook call with __sidewinder_state__ threaded through."""
-        keywords = [
+        keywords = [self._sidewinder_state_keyword()] + [
             ast.keyword(arg=k, value=v) for k, v in (extra_kwargs or {}).items()
-        ] + [self._sidewinder_state_keyword()]
+        ] 
         return ast.Call(
             func=ast.Name(id=f"__{hook.name.lower()}__", ctx=ast.Load()),
             args=list(args),

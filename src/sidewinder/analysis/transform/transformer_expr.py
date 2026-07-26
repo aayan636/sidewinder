@@ -195,23 +195,27 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
             transformed_args.append(lowered_arg.expr)
             context_stmts.extend(lowered_arg.stmts)
 
-        transformed_keywords = []
+        transformed_keywords: dict[str | None, ast.expr] = {}
         for kw in node.keywords:
             lowered_kw_value = self._visit_expr(kw.value)
-            transformed_keywords.append(ast.keyword(kw.arg, lowered_kw_value.expr))
+            transformed_keywords[kw.arg] = lowered_kw_value.expr
             context_stmts.extend(lowered_kw_value.stmts)
 
-        transformed_keywords.insert(0, self._sidewinder_state_keyword())
-        
-        return context_stmts, ast.Call(
-            func=lowered_func.expr,
-            args=transformed_args,
-            keywords=transformed_keywords,
-            lineno=node.lineno,
-            col_offset=node.col_offset,
-            end_lineno=node.end_lineno,
-            end_col_offset=node.end_col_offset
+        temp_variable = self._fresh_temp()
+
+        call_node = self._emit_hook_call(
+            SidewinderHookNames.SIDEWINDER_CALL,
+            *[lowered_func.expr, *transformed_args],
+            extra_kwargs=transformed_keywords
         )
+
+        context_stmts.append(ast.Assign(
+            targets=[ast.Name(id=temp_variable, ctx=ast.Store())],
+            value=call_node,
+            lineno=0, col_offset=0,
+        ))
+        
+        return context_stmts, ast.Name(id=temp_variable, ctx=ast.Load())
     
     def visit_Attribute(self, node: ast.Attribute) -> tuple[list[ast.stmt], ast.expr]:
         """
@@ -540,10 +544,6 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
     
     def visit_Name(self, node: ast.Name) -> Any:
         """Name nodes are unchanged."""
-        node.lineno = 0
-        node.end_lineno = None
-        node.col_offset = 0
-        node.end_col_offset = None
         return [], node
     
     def visit_Constant(self, node: ast.Constant) -> Any:
