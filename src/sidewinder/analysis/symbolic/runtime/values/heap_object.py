@@ -1,8 +1,10 @@
 from __future__ import annotations
-from typing import cast
+from typing import cast, TYPE_CHECKING
 from sidewinder.analysis.symbolic.runtime.values.key import Key
 from sidewinder.analysis.symbolic.runtime.values.symbolic_type import SymbolicType
-from sidewinder.analysis.symbolic.runtime.values.symbolic_value import SymbolicValue
+
+if TYPE_CHECKING:
+    from sidewinder.analysis.symbolic.runtime.values.symbolic_value import SymbolicValue
 
 
 class HeapObject:
@@ -11,6 +13,7 @@ class HeapObject:
     type: SymbolicType
 
     def __init_subclass__(cls):
+        from sidewinder.analysis.symbolic.runtime.values.symbolic_value import SymbolicValue
         super().__init_subclass__()
 
         cls._heap_map = {

@@ -7,7 +7,21 @@
             "request": "launch",
             "module": "sidewinder.analysis.transform.transformer",
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Python Debugger: Executor",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "sidewinder.analysis.symbolic.runtime.__main__",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
         },
         {
             "name": "Python Debugger: Tests",

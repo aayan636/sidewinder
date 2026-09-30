@@ -30,3 +30,10 @@ class SidewinderState:
         latestCallFrame = self.callStack[-1]
         latestEffects = self.effects[latestCallFrame]
         return [effect for effect in latestEffects if isinstance(effect.effect.type, ReturnsEffect)]
+
+    def pushToCallStack(self, effector: Effector):
+        self.callStack.append(effector)
+
+    def popFromCallStack(self):
+        assert len(self.callStack) > 0
+        self.callStack.pop()

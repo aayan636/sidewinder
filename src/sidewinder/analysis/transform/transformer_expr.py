@@ -222,11 +222,11 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         Transform attribute access to sidewinder getattr hook.
         
         a.b -> 
-        __t1 = a.__sidewinder_getattr__("b", __sidewinder_state__=__sidewinder_state__)
+        __t1 = __sidewinder_getattr__(a, "b", __sidewinder_state__=__sidewinder_state__)
         
         For chained access a.b.c, recursion handles it:
-        __t1 = a.__sidewinder_getattr__("b", __sidewinder_state__=__sidewinder_state__)
-        __t2 = __t1.__sidewinder_getattr__("c", __sidewinder_state__=__sidewinder_state__)
+        __t1 = __sidewinder_getattr__(a, "b", __sidewinder_state__=__sidewinder_state__)
+        __t2 = __sidewinder_getattr__(__t1, "c", __sidewinder_state__=__sidewinder_state__)
         """
         # recursively transform the object being accessed
         lowered_visited_obj = self._visit_expr(node.value)
@@ -235,10 +235,9 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         temp = self._fresh_temp("__sidewinder_attr")
         stmt = ast.Assign(
             targets=[ast.Name(id=temp, ctx=ast.Store())],
-            value=self._emit_method_hook_call(
-                lowered_visited_obj.expr,
+            value=self._emit_hook_call(
                 SidewinderHookNames.SIDEWINDER_GETATTR,
-                ast.Constant(value=node.attr),
+                *[lowered_visited_obj.expr, ast.Constant(value=node.attr)],
             ),
             lineno=0, col_offset=0,
         )
