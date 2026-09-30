@@ -6,7 +6,7 @@ from sidewinder.analysis.symbolic.runtime.values.symbolic_value import SymbolicV
 
 
 class SidewinderHookCallable(Protocol):
-    def __call__(self, *args: list[SymbolicValue], __sidewinder_state: SidewinderState, **kwargs: dict[str, SymbolicValue]) -> Any:
+    def __call__(self, *args: list[SymbolicValue], _sidewinder_state: SidewinderState, **kwargs: dict[str, SymbolicValue]) -> Any:
         ...
     
 

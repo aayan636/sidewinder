@@ -11,7 +11,7 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         """
         Transform binary operation to method call.
         
-        a + b -> a.__add__(b, __sidewinder_state)
+        a + b -> a.__add__(b, _sidewinder_state)
         """
         op_map = {
             ast.Add: 'add',
@@ -45,7 +45,7 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
                 attr=method_name,
                 ctx=ast.Load()
             ),
-            args=[lowered_right.expr, ast.Name(id='__sidewinder_state', ctx=ast.Load())],
+            args=[lowered_right.expr, ast.Name(id='_sidewinder_state', ctx=ast.Load())],
             keywords=[]
         )
     
@@ -53,7 +53,7 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         """
         Transform unary operation to method call.
         
-        -a -> a.__sidewinder_neg__(__sidewinder_state)
+        -a -> a.__sidewinder_neg__(_sidewinder_state)
         """
         op_map = {
             ast.UAdd: 'pos',
@@ -68,7 +68,7 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         
         # Special case for 'not' - it's not a dunder method
         if op_name == 'not':
-            # TODO: 'not x' should become something like: not x.__sidewinder_bool__(__sidewinder_state)
+            # TODO: 'not x' should become something like: not x.__sidewinder_bool__(_sidewinder_state)
             # For now, just transform the operand
             lowered_operand = self._visit_expr(node.operand)
             return lowered_operand.stmts, ast.UnaryOp(op=node.op, operand=lowered_operand.expr)
@@ -82,7 +82,7 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
                 attr=method_name,
                 ctx=ast.Load()
             ),
-            args=[ast.Name(id='__sidewinder_state', ctx=ast.Load())],
+            args=[ast.Name(id='_sidewinder_state', ctx=ast.Load())],
             keywords=[]
         )
     
@@ -99,8 +99,8 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
         """
         Transform comparison operation.
         
-        a < b -> a.__sidewinder_lt__(b, __sidewinder_state)
-        a == b -> a.__sidewinder_eq__(b, __sidewinder_state)
+        a < b -> a.__sidewinder_lt__(b, _sidewinder_state)
+        a == b -> a.__sidewinder_eq__(b, _sidewinder_state)
         """
         op_map = {
             ast.Eq: 'eq',
@@ -177,10 +177,10 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
     
     def visit_Call(self, node: ast.Call) -> tuple[list[ast.stmt], ast.expr]:
         """
-        Transform function call to include __sidewinder_state.
+        Transform function call to include _sidewinder_state.
         
-        func(a, b) -> func(a, b, __sidewinder_state=__sidewinder_state)
-        func(a, x=b) -> func(a, __sidewinder_state=__sidewinder_state, x=b) [if func has **kwargs]
+        func(a, b) -> func(a, b, _sidewinder_state=_sidewinder_state)
+        func(a, x=b) -> func(a, _sidewinder_state=_sidewinder_state, x=b) [if func has **kwargs]
         """
         # Transform the function expression
         context_stmts = []
@@ -375,9 +375,9 @@ class SidewinderExprTransformerMixin(SidewinderTransformerHelpers):
     
     def visit_Lambda(self, node: ast.Lambda) -> Any:
         """
-        Transform lambda to include __sidewinder_state parameter.
+        Transform lambda to include _sidewinder_state parameter.
         
-        lambda x: x + 1 -> lambda x, __sidewinder_state: x.__sidewinder_add__(1, __sidewinder_state)
+        lambda x: x + 1 -> lambda x, _sidewinder_state: x.__sidewinder_add__(1, _sidewinder_state)
         """
         # Add state parameter
         has_kwargs = node.args.kwarg is not None

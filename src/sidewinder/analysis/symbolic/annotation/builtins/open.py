@@ -4,10 +4,10 @@ from sidewinder.analysis.symbolic.runtime.effect import Effect
 from sidewinder.analysis.symbolic.runtime.values.heap_object import HeapObject
 from sidewinder.analysis.symbolic.runtime.memory.state import SidewinderState
 
-def open(file, mode="r", *, __sidewinder_state: SidewinderState):
+def open(file, mode="r", *, _sidewinder_state: SidewinderState):
     if "w" in mode:
-        __sidewinder_state.addEffect(Effect(callsite=None, type=ExternalEffect(OperationType.WRITE, file)))
-    __sidewinder_state.addEffect(Effect(callsite=None, type=ReturnsEffect(FilePointer(file, mode))))
+        _sidewinder_state.addEffect(Effect(callsite=None, type=ExternalEffect(OperationType.WRITE, file)))
+    _sidewinder_state.addEffect(Effect(callsite=None, type=ReturnsEffect(FilePointer(file, mode))))
 
 class FilePointer(HeapObject):
     def __init__(self, name, mode):
@@ -15,17 +15,17 @@ class FilePointer(HeapObject):
         self.name = name
         self.mode = mode
 
-    def __enter__(self, *, __sidewinder_state: SidewinderState):
-        __sidewinder_state.addEffect(Effect(callsite=None, type=ReturnsEffect(self)))
+    def __enter__(self, *, _sidewinder_state: SidewinderState):
+        _sidewinder_state.addEffect(Effect(callsite=None, type=ReturnsEffect(self)))
 
-    def __exit__(self, exc_type, exc_value, traceback, *, __sidewinder_state: SidewinderState):
+    def __exit__(self, exc_type, exc_value, traceback, *, _sidewinder_state: SidewinderState):
         # TODO: Exception handling should be here
         pass
 
-    def read(self, size=-1, *, __sidewinder_state: SidewinderState):
-        __sidewinder_state.addEffect(Effect(callsite=None, type=ExternalEffect(OperationType.READ, self.name)))
-        __sidewinder_state.addEffect(Effect(callsite=None, type=ReturnsEffect(str())))  # TODO: is this the best thing here?
+    def read(self, size=-1, *, _sidewinder_state: SidewinderState):
+        _sidewinder_state.addEffect(Effect(callsite=None, type=ExternalEffect(OperationType.READ, self.name)))
+        _sidewinder_state.addEffect(Effect(callsite=None, type=ReturnsEffect(str())))  # TODO: is this the best thing here?
 
-    def write(self, data, *, __sidewinder_state: SidewinderState):
-        __sidewinder_state.addEffect(Effect(callsite=None, type=ExternalEffect(OperationType.WRITE, self.name)))
-        __sidewinder_state.addEffect(Effect(callsite=None, type=ReturnsEffect(int())))  # TODO: is this the best thing here?
+    def write(self, data, *, _sidewinder_state: SidewinderState):
+        _sidewinder_state.addEffect(Effect(callsite=None, type=ExternalEffect(OperationType.WRITE, self.name)))
+        _sidewinder_state.addEffect(Effect(callsite=None, type=ReturnsEffect(int())))  # TODO: is this the best thing here?

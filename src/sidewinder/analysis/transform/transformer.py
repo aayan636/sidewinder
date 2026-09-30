@@ -2,8 +2,8 @@
 Sidewinder AST Transformer for Python 3.12
 
 This module transforms Python code for symbolic execution by:
-1. Injecting __sidewinder_state parameter into all function definitions
-2. Injecting __sidewinder_state argument into all function calls
+1. Injecting _sidewinder_state parameter into all function definitions
+2. Injecting _sidewinder_state argument into all function calls
 3. Desugaring all syntactic sugar to explicit method calls
 4. Converting all operations to __sidewinder_* methods
 """
@@ -84,7 +84,7 @@ class SidewinderTransformer(
                 new_targets.append(target)
             else:
                 raise NotImplementedError("TBI")
-                # TODO: Should del x become x.__sidewinder_del__(__sidewinder_state)?
+                # TODO: Should del x become x.__sidewinder_del__(_sidewinder_state)?
             
         node.targets = new_targets
         return node
@@ -96,11 +96,11 @@ class SidewinderTransformer(
         
         assert expr
         becomes:
-        __sidewinder_assert__(expr<transformed>, __sidewinder_state=__sidewinder_state)
+        __sidewinder_assert__(expr<transformed>, _sidewinder_state=_sidewinder_state)
         
         assert expr, msg
         becomes:
-        __sidewinder_assert__(expr<transformed>, msg<transformed>, __sidewinder_state=__sidewinder_state)
+        __sidewinder_assert__(expr<transformed>, msg<transformed>, _sidewinder_state=_sidewinder_state)
         """
         lowered_test = self._visit_expr(node.test)
         args = [lowered_test.expr]

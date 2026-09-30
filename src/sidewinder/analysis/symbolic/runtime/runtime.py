@@ -20,9 +20,9 @@ class SidewinderRuntime:
         }
         global_variables.update(self.hooks)
         global_variables.update(self.annotations)
-        global_variables["__sidewinder_state"] = self.sidewinder_state
+        global_variables["_sidewinder_state"] = self.sidewinder_state
 
         exec(transformed_code, global_variables)
 
-        new_state: SidewinderState = global_variables["__sidewinder_state"]
+        new_state: SidewinderState = global_variables["_sidewinder_state"]
         return new_state.effects

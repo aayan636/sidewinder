@@ -17,7 +17,7 @@ class SidewinderIfTransformerMixin(SidewinderTransformerHelpers):
             lineno=0, col_offset=0,
         ))
 
-        # sidewinder_push_true_condition(t, __sidewinder_state)
+        # sidewinder_push_true_condition(t, _sidewinder_state)
         result.append(ast.Expr(
             value=self._emit_hook_call(
                 SidewinderHookNames.SIDEWINDER_CONDITION_TRUE,
@@ -29,14 +29,14 @@ class SidewinderIfTransformerMixin(SidewinderTransformerHelpers):
         # <transformed if block>
         result.extend(self._visit_list_of_stmts(node.body))
 
-        # sidewinder_pop_condition(__sidewinder_state)
+        # sidewinder_pop_condition(_sidewinder_state)
         result.append(ast.Expr(
             value=self._emit_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
             lineno=0, col_offset=0
         ))
 
         if node.orelse:
-            # sidewinder_push_false_condition(t, __sidewinder_state)
+            # sidewinder_push_false_condition(t, _sidewinder_state)
             result.append(ast.Expr(
                 value=self._emit_hook_call(
                     SidewinderHookNames.SIDEWINDER_CONDITION_FALSE,
@@ -49,7 +49,7 @@ class SidewinderIfTransformerMixin(SidewinderTransformerHelpers):
         
             result.extend(self._visit_list_of_stmts(node.orelse))
 
-            # sidewinder_pop_condition(__sidewinder_state)
+            # sidewinder_pop_condition(_sidewinder_state)
             result.append(ast.Expr(
                 value=self._emit_hook_call(SidewinderHookNames.SIDEWINDER_POP_CONDITION),
                 lineno=0, col_offset=0

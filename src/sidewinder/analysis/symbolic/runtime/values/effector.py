@@ -9,5 +9,5 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class Effector(Protocol):
-    def __call__(self, *args: list[SymbolicValue], __sidewinder_state: SidewinderState, **kwargs: dict[str, SymbolicValue]) -> Any:
+    def __call__(self, *args: list[SymbolicValue], _sidewinder_state: SidewinderState, **kwargs: dict[str, SymbolicValue]) -> Any:
             ...

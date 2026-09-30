@@ -1,7 +1,7 @@
 from sidewinder.analysis.symbolic.runtime.memory.state import SidewinderState
 x1
 __sidewinder_exc_type0 = ValueError
-__sidewinder_cond1, __sidewinder_discard2 = __sidewinder_exception_condition_and_object__(__sidewinder_exc_type0, __sidewinder_state=__sidewinder_state, already_handled=[])
-__sidewinder_condition_true__(__sidewinder_cond1, __sidewinder_state=__sidewinder_state)
+__sidewinder_cond1, __sidewinder_discard2 = __sidewinder_exception_condition_and_object__(__sidewinder_exc_type0, _sidewinder_state=_sidewinder_state, already_handled=[])
+__sidewinder_condition_true__(__sidewinder_cond1, _sidewinder_state=_sidewinder_state)
 x2
-__sidewinder_pop_condition__(__sidewinder_state=__sidewinder_state)
+__sidewinder_pop_condition__(_sidewinder_state=_sidewinder_state)
