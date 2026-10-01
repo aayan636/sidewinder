@@ -22,7 +22,7 @@ class SidewinderControlFlowBreakerTransformerMixin(SidewinderTransformerHelpers)
         
         break
         becomes:
-        __sidewinder_break__(__sidewinder_state=__sidewinder_state)
+        __sidewinder_break__(_sidewinder_state=_sidewinder_state)
         """
         return ast.Expr(
             value=self._emit_hook_call(SidewinderHookNames.SIDEWINDER_BREAK),
@@ -35,7 +35,7 @@ class SidewinderControlFlowBreakerTransformerMixin(SidewinderTransformerHelpers)
         
         continue
         becomes:
-        __sidewinder_continue__(__sidewinder_state=__sidewinder_state)
+        __sidewinder_continue__(_sidewinder_state=_sidewinder_state)
         """
         return ast.Expr(
             value=self._emit_hook_call(SidewinderHookNames.SIDEWINDER_CONTINUE),
@@ -48,15 +48,15 @@ class SidewinderControlFlowBreakerTransformerMixin(SidewinderTransformerHelpers)
         
         raise exc
         becomes:
-        __sidewinder_raise__(exc, __sidewinder_state=__sidewinder_state)
+        __sidewinder_raise__(exc, _sidewinder_state=_sidewinder_state)
         
         raise exc from cause
         becomes:
-        __sidewinder_raise__(exc, cause, __sidewinder_state=__sidewinder_state)
+        __sidewinder_raise__(exc, cause, _sidewinder_state=_sidewinder_state)
         
         raise  (bare re-raise)
         becomes:
-        __sidewinder_raise__(__sidewinder_state=__sidewinder_state)
+        __sidewinder_raise__(_sidewinder_state=_sidewinder_state)
         """
 
         stmts = []

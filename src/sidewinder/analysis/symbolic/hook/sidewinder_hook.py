@@ -2,10 +2,11 @@ from enum import Enum, auto
 from typing import Any, Protocol
 
 from sidewinder.analysis.symbolic.runtime.memory.state import SidewinderState
+from sidewinder.analysis.symbolic.runtime.values.symbolic_value import SymbolicValue
 
 
 class SidewinderHookCallable(Protocol):
-    def __call__(self, *args: Any, __sidewinder_state__: SidewinderState, **kwargs: Any) -> Any:
+    def __call__(self, *args: list[SymbolicValue], _sidewinder_state: SidewinderState, **kwargs: dict[str, SymbolicValue]) -> Any:
         ...
     
 

@@ -71,8 +71,8 @@ class SidewinderAssignTransformerMixin(SidewinderTransformerHelpers):
             args=[lowered_value.expr],
             keywords=[
                 ast.keyword(
-                    arg='__sidewinder_state',
-                    value=ast.Name(id='__sidewinder_state', ctx=ast.Load()),
+                    arg='_sidewinder_state',
+                    value=ast.Name(id='_sidewinder_state', ctx=ast.Load()),
                 )
             ],
         )

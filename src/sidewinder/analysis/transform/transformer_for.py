@@ -11,10 +11,10 @@ class SidewinderForTransformerMixin(SidewinderTransformerHelpers):
             body
         
         Becomes:
-        _iter = iterable.__sidewinder_iter__(__sidewinder_state)
+        _iter = iterable.__sidewinder_iter__(_sidewinder_state)
         while True:
             try:
-                _next_val = _iter.__sidewinder_next__(__sidewinder_state)
+                _next_val = _iter.__sidewinder_next__(_sidewinder_state)
                 item = _next_val  # via _visit_target, handles tuple unpack etc.
                 body
             except StopIteration:
@@ -32,10 +32,10 @@ class SidewinderForTransformerMixin(SidewinderTransformerHelpers):
             body
         
         Becomes:
-        _aiter = iterable.__sidewinder_aiter__(__sidewinder_state)
+        _aiter = iterable.__sidewinder_aiter__(_sidewinder_state)
         while True:
             try:
-                _next_val = await _aiter.__sidewinder_anext__(__sidewinder_state)
+                _next_val = await _aiter.__sidewinder_anext__(_sidewinder_state)
                 item = _next_val  # via _visit_target, handles tuple unpack etc.
                 body
             except StopAsyncIteration:
@@ -57,7 +57,7 @@ class SidewinderForTransformerMixin(SidewinderTransformerHelpers):
         stop_exc     = 'StopAsyncIteration'   if is_async else 'StopIteration'
         iter_tmp     = self._fresh_temp("__aiter" if is_async else "__iter")
 
-        # _iter = iterable.__sidewinder_iter__(__sidewinder_state)
+        # _iter = iterable.__sidewinder_iter__(_sidewinder_state)
         lowered_iter_expr = self._visit_expr(iter_expr)
 
         iter_assign = ast.Assign(
@@ -68,13 +68,13 @@ class SidewinderForTransformerMixin(SidewinderTransformerHelpers):
                     attr=iter_method,
                     ctx=ast.Load(),
                 ),
-                args=[ast.Name(id='__sidewinder_state', ctx=ast.Load())],
+                args=[ast.Name(id='_sidewinder_state', ctx=ast.Load())],
                 keywords=[],
             ),
             lineno=0, col_offset=0,
         )
 
-        # _next_val = _iter.__sidewinder_next__(__sidewinder_state)
+        # _next_val = _iter.__sidewinder_next__(_sidewinder_state)
         # (possibly wrapped in await)
         next_call = ast.Call(
             func=ast.Attribute(
@@ -82,7 +82,7 @@ class SidewinderForTransformerMixin(SidewinderTransformerHelpers):
                 attr=next_method,
                 ctx=ast.Load(),
             ),
-            args=[ast.Name(id='__sidewinder_state', ctx=ast.Load())],
+            args=[ast.Name(id='_sidewinder_state', ctx=ast.Load())],
             keywords=[],
         )
         next_value = ast.Await(value=next_call) if is_async else next_call    

@@ -8,23 +8,23 @@ class SidewinderFunctionTransformerMixin(SidewinderTransformerHelpers):
 
     def _transform_function_def(self, node: Union[ast.FunctionDef, ast.AsyncFunctionDef]) -> Any:
         """
-        Transform function definition to include __sidewinder_state parameter.
+        Transform function definition to include _sidewinder_state parameter.
         Works for both regular and async functions.
         
-        Strategy: ALWAYS add __sidewinder_state as a keyword-only argument.
+        Strategy: ALWAYS add _sidewinder_state as a keyword-only argument.
         
         Why keyword-only?
-        1. Consistent call sites: always use __sidewinder_state=state (no signature tracking needed)
+        1. Consistent call sites: always use _sidewinder_state=state (no signature tracking needed)
         2. Automatic correct placement: kwonlyargs come after *args and before **kwargs
         3. No positional ambiguity: can't accidentally pass wrong number of args
         
         Results in:
-        - def foo(x, y):              → def foo(x, y, *, __sidewinder_state):
-        - def foo(x, *args):          → def foo(x, *args, __sidewinder_state):  
-        - def foo(x, **kw):           → def foo(x, *, __sidewinder_state, **kw):
-        - def foo(x, *args, **kw):    → def foo(x, *args, __sidewinder_state, **kw):
+        - def foo(x, y):              → def foo(x, y, *, _sidewinder_state):
+        - def foo(x, *args):          → def foo(x, *args, _sidewinder_state):  
+        - def foo(x, **kw):           → def foo(x, *, _sidewinder_state, **kw):
+        - def foo(x, *args, **kw):    → def foo(x, *args, _sidewinder_state, **kw):
         
-        All call sites become: func(..., __sidewinder_state=__sidewinder_state)
+        All call sites become: func(..., _sidewinder_state=_sidewinder_state)
         """
         # Check if function has **kwargs
         has_kwargs = node.args.kwarg is not None

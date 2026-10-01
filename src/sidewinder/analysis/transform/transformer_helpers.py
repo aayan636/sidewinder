@@ -17,17 +17,17 @@ class SidewinderTransformerHelpers(SidewinderTransformerBase):
         return name
     
     def _make_sidewinder_state_param(self) -> ast.arg:
-        """Create the __sidewinder_state parameter with type annotation."""
+        """Create the _sidewinder_state parameter with type annotation."""
         return ast.arg(
-            arg="__sidewinder_state",
+            arg="_sidewinder_state",
             annotation=ast.Name(id="SidewinderState", ctx=ast.Load())
         )
     
     def _sidewinder_state_keyword(self) -> ast.keyword:
-        """Create the __sidewinder_state keyword argument for hook calls."""
+        """Create the _sidewinder_state keyword argument for hook calls."""
         return ast.keyword(
-            arg="__sidewinder_state",
-            value=ast.Name(id="__sidewinder_state", ctx=ast.Load())
+            arg="_sidewinder_state",
+            value=ast.Name(id="_sidewinder_state", ctx=ast.Load())
         )
     
     def _emit_hook_call(

@@ -1,9 +1,13 @@
-from typing import Protocol
+from __future__ import annotations
 
-from sidewinder.analysis.symbolic.runtime.values.symbolic_value import SymbolicValue
-from analysis.symbolic.runtime.state.effect.guarded_effect import GuardedEffect
+from typing import Any, Protocol, runtime_checkable, TYPE_CHECKING
 
 
+if TYPE_CHECKING:
+    from sidewinder.analysis.symbolic.runtime.values.symbolic_value import SymbolicValue
+    from sidewinder.analysis.symbolic.runtime.memory.state import SidewinderState
+
+@runtime_checkable
 class Effector(Protocol):
-    def __call__(self, *args: SymbolicValue) -> list[GuardedEffect]:
-        ...
+    def __call__(self, *args: list[SymbolicValue], _sidewinder_state: SidewinderState, **kwargs: dict[str, SymbolicValue]) -> Any:
+            ...
