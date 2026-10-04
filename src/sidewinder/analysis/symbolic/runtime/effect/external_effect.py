@@ -12,5 +12,16 @@ class ExternalEffect(EffectType):
     resource: SymbolicValue
 
     def __init__(self, operation: OperationType, resource: SymbolicValue):
+        super().__init__()
         self.operation = operation
         self.resource = resource
+
+    def __str__(self):
+        if self.operation == OperationType.READ:
+            return f"Reads from {self.resource}"
+        elif self.operation == OperationType.WRITE:
+            return f"Writes to {self.resource}"
+        elif self.operation == OperationType.READ_WRITE:
+            return f"Reads and Writes to {self.resource}"
+        else:
+            raise NotImplementedError(f"Unknown operation: {self.operation}")
