@@ -8,3 +8,7 @@ class Effect:
     def __init__(self, callsite: Any, type: EffectType):
         self.callsite = callsite
         self.type = type
+
+    def __str__(self):
+        # TODO: When we add callsite, this needs to change
+        return str(self.type)

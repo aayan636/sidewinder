@@ -5,3 +5,9 @@ from sidewinder.analysis.symbolic.runtime.values.key import Key
 class MutatesEffect(EffectType):
     mutatedHeapObject: SymbolicValue
     mutatedKey: Key
+
+    def __init__(self):
+        super().__init__()
+
+    def __str__(self):
+        return f"Mutates {self.mutatedHeapObject}'s key {self.mutatedKey}"
