@@ -7,6 +7,8 @@ class OperationType(Enum):
     WRITE = auto()
     READ_WRITE = auto()
 
+# TODO: Need to add resource types, like OS, buffer, external resource as a Enum
+
 class ExternalEffect(EffectType):
     operation: OperationType
     resource: SymbolicValue

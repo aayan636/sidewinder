@@ -1,5 +1,7 @@
 from typing import Any
 
+import logging
+
 from sidewinder.analysis.symbolic.runtime.memory.state import SidewinderState
 from sidewinder.analysis.symbolic.runtime.values.symbolic_value import SymbolicValue
 from sidewinder.analysis.symbolic.runtime.effect.guarded_effect import GuardedEffect
@@ -18,7 +20,8 @@ def __sidewinder_call__(*effectorAndArgs: list[SymbolicValue], _sidewinder_state
     if len(R) > 1:
         raise NotImplementedError("Only One return effect is supported for now")
     elif len(R) == 0:
-        raise NotImplementedError("Expected something to be thrown")
+        logging.warning("Effector Returned Nothing, currently returning a plain None, this should be a Symbolic None for analyzability")
+        return None
     else:
         if R[0].condition:
             raise NotImplementedError("GuardedEffect not implemented yet")

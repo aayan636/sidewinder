@@ -7,10 +7,10 @@ class SidewinderRuntime:
 
     def __init__(self):
         from sidewinder.analysis.symbolic.hook import hook_map
-        from sidewinder.analysis.symbolic.annotation.builtins.open import open
+        from sidewinder.analysis.symbolic.annotation.builtins.builtin_file_io import open, input
         self.sidewinder_state = SidewinderState()
         self.hooks = {f"__{hook_name.name.lower()}__": hook for (hook_name, hook) in hook_map.items()}
-        self.annotations = {"open": open}
+        self.annotations = {"open": open, "input": input}
 
     def exec_code(self, transformed_code: str, original_code_location: Path):
         global_variables: dict[str, str | Callable | SidewinderState | dict] = {
