@@ -5,6 +5,10 @@ from sidewinder.analysis.symbolic.runtime.values.heap_object import HeapObject
 from sidewinder.analysis.symbolic.runtime.memory.state import SidewinderState
 from sidewinder.analysis.symbolic.annotation.builtins.string import SymbolicString
 
+def input(_sidewinder_state: SidewinderState):
+    _sidewinder_state.addEffect(Effect(callsite=None, type=ExternalEffect(OperationType.READ, "OS")))
+    _sidewinder_state.addEffect(Effect(callsite=None, type=ReturnsEffect(SymbolicString(""))))  # TODO: is this the best thing here?
+
 def open(file, mode="r", *, _sidewinder_state: SidewinderState):
     if "w" in mode:
         _sidewinder_state.addEffect(Effect(callsite=None, type=ExternalEffect(OperationType.WRITE, file)))

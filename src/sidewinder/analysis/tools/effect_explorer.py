@@ -13,7 +13,9 @@ class EffectExplorer:
         self.code_to_effect = {''.join(random.choices(string.ascii_lowercase, k=5)): key for key in self.effects.keys()}
 
     def get_codes(self):
-        print({code: func_name.effector.__qualname__ for code, func_name in self.code_to_effect.items()})
+        code_mapping = {code: func_name.effector.__qualname__ for code, func_name in self.code_to_effect.items()}
+        print(code_mapping)
+        return code_mapping
 
     def get_effects(self, code: str, show_verbose: bool = False):
         if code not in self.code_to_effect:
@@ -36,8 +38,9 @@ class EffectExplorer:
                 continue
             print(f"{prefix}  {effect}")
 
-        for inner in effector.inner_effector:
-            self._print_effector(inner, show_verbose, indent + 1)
+        for inners in effector.inner_effector.values():
+            for inner in inners:
+                self._print_effector(inner, show_verbose, indent + 1)
 
 
         
